@@ -1,40 +1,24 @@
 import * as crypto from 'node:crypto';
-import * as path from 'node:path';
-import { readFileSync } from 'node:fs';
+import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
+import { makeSourceReader } from '../utils/source-reader.js';
 
 export interface SilentCatchDetectorInput {
   workspaceRoot: string;
   files: ReadonlyArray<string>;
+  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
+  project?: Project;
 }
 
-/**
- * Silent-catch detector.
- *
- * Flags `try { … } catch { … }` blocks that:
- *   - have an empty body, or
- *   - only contain a single `console.log/warn/info/debug` call, or
- *   - only contain a single bare `return` / `return undefined` / `return null`.
- *
- * These swallow errors with no telemetry path, no recovery, and no
- * rethrow — the most common root cause of "it just stopped working"
- * production incidents. We deliberately do NOT flag `console.error(...)`
- * or rethrow patterns: those are intentional.
- *
- * MED severity: each finding is high-signal but the fix is contextual
- * (rethrow vs report vs telemetry).
- */
+// try/catch whose body is empty, only console.log/warn/info/debug, or a bare
+// return. console.error + rethrow intentional, skipped. MED.
 export function detectSilentCatches(input: SilentCatchDetectorInput): Finding[] {
+  const read = makeSourceReader(input.workspaceRoot, input.project);
   const findings: Finding[] = [];
   for (const rel of input.files) {
     if (!isAnalysable(rel)) continue;
-    const abs = path.resolve(input.workspaceRoot, rel);
-    let raw: string;
-    try {
-      raw = readFileSync(abs, 'utf-8');
-    } catch {
-      continue;
-    }
+    const raw = read(rel);
+    if (raw == null) continue;
     findings.push(...analyseFile(rel, raw));
   }
   return findings;

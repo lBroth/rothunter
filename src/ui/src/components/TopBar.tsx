@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { Loader2, Moon, Play, Sun } from 'lucide-react';
 import { useTheme } from '../lib/theme.js';
 import { WorkspacePicker } from './WorkspacePicker.js';
@@ -21,23 +22,18 @@ export function TopBar({
 
   return (
     <header className="h-14 border-b border-border bg-panel flex items-center gap-2 sm:gap-3 px-3 sm:px-4 shrink-0">
+      <WorkspacePicker />
       <button
         type="button"
         onClick={onHome}
-        className="flex items-baseline gap-2 shrink-0 hover:opacity-80"
+        className="hidden lg:inline-flex items-center shrink-0 hover:opacity-80"
         title="Dashboard"
+        aria-label="Dashboard"
       >
-        <span className="font-serif text-lg sm:text-xl font-semibold tracking-tight text-ink leading-none">
-          <span className="text-accent">ot</span> Hunter
-        </span>
-        <span className="hidden lg:inline text-[10px] uppercase tracking-widest text-muted font-mono">
+        <span className="text-[10px] uppercase tracking-widest text-muted font-mono">
           v0.41 · self-hosted
         </span>
       </button>
-
-      <div className="ml-2 sm:ml-3">
-        <WorkspacePicker />
-      </div>
 
       {/* Last scan — hidden < lg. */}
       <div className="hidden lg:flex text-xs text-muted font-mono ml-2 items-center gap-2">
@@ -68,7 +64,11 @@ export function TopBar({
             : 'bg-accent text-panel hover:bg-accent/90')
         }
       >
-        {pending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
+        {pending ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : (
+          <Play size={14} fill="currentColor" />
+        )}
         <span className="hidden sm:inline">{pending ? 'Starting…' : 'Run scan'}</span>
       </button>
     </header>

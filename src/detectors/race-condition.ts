@@ -10,10 +10,13 @@ import {
   type Node,
 } from 'ts-morph';
 import type { Finding } from '../types.js';
+import { buildCfg, blockOf, reachable, type Cfg } from '../graph/cfg.js';
 
 export interface RaceConditionDetectorInput {
   workspaceRoot: string;
   files: ReadonlyArray<string>;
+  /** Optional pre-built ts-morph Project — saves a parse per file. */
+  project?: Project;
 }
 
 type AsyncCallable = FunctionDeclaration | MethodDeclaration | ArrowFunction | FunctionExpression;
@@ -21,10 +24,12 @@ type AsyncCallable = FunctionDeclaration | MethodDeclaration | ArrowFunction | F
 interface ReadEntry {
   target: string; // canonical key e.g. `this.foo` or `cache`
   line: number;
+  node: Node;
 }
 
 interface AwaitEntry {
   line: number;
+  node: Node;
 }
 
 interface WriteEntry {
@@ -32,6 +37,7 @@ interface WriteEntry {
   line: number;
   endLine: number;
   source: string;
+  node: Node;
 }
 
 interface RaceCandidate {
@@ -46,49 +52,11 @@ interface RaceCandidate {
   enclosingSource: string;
 }
 
-/**
- * Tier-1 race-condition detector — three patterns, one detector id:
- *
- * 1. Read-modify-write across `await` (the classic lost-update):
- *
- *      async function bump(): Promise<void> {
- *        const cur = this.counter;
- *        await someAsyncWork();
- *        this.counter = cur + 1;          // RACE
- *      }
- *
- *    Shared targets: `this.<id>` properties and module-scope `let`/`var`
- *    bindings. Requires read → await → write in order, same target.
- *
- * 2. `Promise.all([...])` siblings writing the same shared target:
- *
- *      await Promise.all([
- *        (async () => { this.tally = this.tally + 1; })(),
- *        (async () => { this.tally = this.tally + 1; })(),
- *      ]);
- *
- *    Also covers `Promise.allSettled` and `Promise.race`. Two parallel
- *    arms writing the same `this.X` / outer-mutable are guaranteed to
- *    race when both arms execute.
- *
- * 3. Event-emitter handler closing over an outer `let`/`var` and doing
- *    read-modify-write across `await`:
- *
- *      let buffer: Item[] = [];
- *      emitter.on('data', async (item) => {
- *        const cur = buffer;
- *        await flush();
- *        buffer = [...cur, item];       // RACE if two events overlap
- *      });
- *
- *    Recognised registration calls: `.on(...)`, `.addListener(...)`,
- *    `.addEventListener(...)`. The handler may close over `let`/`var` at
- *    any enclosing scope.
- *
- * False-positive control:
- *   - Severity `medium`, confidence 0.7. LLM Tier-3 (deferred) verdicts.
- *   - `// rothunter:ignore-race` above the write line suppresses the finding.
- */
+// Tier-1 race detector. Three patterns:
+//   1. read → await → write on `this.<id>` / module `let`/`var`
+//   2. Promise.all/allSettled/race arms writing the same shared target
+//   3. emitter.on/.addListener handler closing over outer mutable + read-modify-write across await
+// Severity medium, confidence 0.7. `// rothunter:ignore-race` suppresses.
 const PROMISE_PARALLEL_METHODS = new Set(['all', 'allSettled', 'race']);
 const EMITTER_REGISTRATION_METHODS = new Set(['on', 'once', 'addListener', 'addEventListener']);
 
@@ -104,12 +72,17 @@ interface PromiseAllRace {
 }
 
 export function detectRaceConditions(input: RaceConditionDetectorInput): Finding[] {
-  const project = new Project({
-    skipAddingFilesFromTsConfig: true,
-    skipFileDependencyResolution: true,
-  });
-  for (const rel of input.files) {
-    project.addSourceFileAtPathIfExists(path.join(input.workspaceRoot, rel));
+  let project: Project;
+  if (input.project) {
+    project = input.project;
+  } else {
+    project = new Project({
+      skipAddingFilesFromTsConfig: true,
+      skipFileDependencyResolution: true,
+    });
+    for (const rel of input.files) {
+      project.addSourceFileAtPathIfExists(path.join(input.workspaceRoot, rel));
+    }
   }
 
   const rmwCandidates: RaceCandidate[] = [];
@@ -205,7 +178,7 @@ function analyzeAsync(fn: AsyncCallable, file: string, moduleMutables: Set<strin
     if (!init) continue;
     const target = canonicalSharedTarget(init, moduleMutables);
     if (!target) continue;
-    reads.push({ target, line: decl.getStartLineNumber() });
+    reads.push({ target, line: decl.getStartLineNumber(), node: decl });
   }
   // Also: `const { x } = this`-style destructuring — treat as a read of `this`.
   // For now we only emit if the destructured source itself is a shared target
@@ -213,7 +186,7 @@ function analyzeAsync(fn: AsyncCallable, file: string, moduleMutables: Set<strin
 
   // --- Awaits ---------------------------------------------------------------
   for (const aw of body.getDescendantsOfKind(SyntaxKind.AwaitExpression)) {
-    awaits.push({ line: aw.getStartLineNumber() });
+    awaits.push({ line: aw.getStartLineNumber(), node: aw });
   }
   if (awaits.length === 0) return [];
 
@@ -228,6 +201,7 @@ function analyzeAsync(fn: AsyncCallable, file: string, moduleMutables: Set<strin
       line: bin.getStartLineNumber(),
       endLine: bin.getEndLineNumber(),
       source: bin.getText(),
+      node: bin,
     });
   }
   if (writes.length === 0) return [];
@@ -235,20 +209,66 @@ function analyzeAsync(fn: AsyncCallable, file: string, moduleMutables: Set<strin
   const enclosingName = (fn as { getName?: () => string | undefined }).getName?.();
   const enclosingSource = trimEnclosingSource((fn as { getText(): string }).getText());
 
+  // Build a CFG of the function body and use forward reachability to
+  // confirm that some execution path actually visits read → await → write
+  // in that order. Pure line-number ordering misfires on
+  //   `if (cond) { read } await x; write` — `read` is conditional and may
+  // never execute on the path that reaches the write. The CFG resolves
+  // that ambiguity (the if-then block and the post-if join block are
+  // different CFG nodes, so the read is NOT reachable from the join
+  // entry without going through the then branch).
+  const cfg = buildCfg(body);
+  const blockCache = new Map<Node, number>();
+  const blockFor = (n: Node): number => {
+    const cached = blockCache.get(n);
+    if (cached !== undefined) return cached;
+    const id = blockOf(cfg, n);
+    blockCache.set(n, id);
+    return id;
+  };
+  const orderedReach = (
+    fromBlock: number,
+    fromLine: number,
+    toBlock: number,
+    toLine: number,
+  ): boolean => {
+    if (fromBlock < 0 || toBlock < 0) return false;
+    if (fromBlock === toBlock) {
+      // Same straight-line block — strict line ordering. Back-edges that
+      // loop the block to itself are picked up by reachable() below; the
+      // first-iteration ordering is what matters for the standard
+      // read-modify-write pattern.
+      return fromLine < toLine || reachable(cfg, fromBlock, toBlock);
+    }
+    return reachable(cfg, fromBlock, toBlock);
+  };
+
   const out: RaceCandidate[] = [];
   for (const r of reads) {
-    const laterAwait = awaits.find((a) => a.line > r.line);
-    if (!laterAwait) continue;
-    const laterWrite = writes.find((w) => w.target === r.target && w.line > laterAwait.line);
-    if (!laterWrite) continue;
+    const rBlock = blockFor(r.node);
+    if (rBlock < 0) continue;
+    let chosen: { aw: AwaitEntry; w: WriteEntry } | null = null;
+    for (const aw of awaits) {
+      const aBlock = blockFor(aw.node);
+      if (!orderedReach(rBlock, r.line, aBlock, aw.line)) continue;
+      for (const w of writes) {
+        if (w.target !== r.target) continue;
+        const wBlock = blockFor(w.node);
+        if (!orderedReach(aBlock, aw.line, wBlock, w.line)) continue;
+        chosen = { aw, w };
+        break;
+      }
+      if (chosen) break;
+    }
+    if (!chosen) continue;
     out.push({
       file,
       target: r.target,
       readLine: r.line,
-      awaitLine: laterAwait.line,
-      writeLine: laterWrite.line,
-      writeEndLine: laterWrite.endLine,
-      writeSnippet: trimSnippet(laterWrite.source),
+      awaitLine: chosen.aw.line,
+      writeLine: chosen.w.line,
+      writeEndLine: chosen.w.endLine,
+      writeSnippet: trimSnippet(chosen.w.source),
       enclosingName: enclosingName ?? undefined,
       enclosingSource,
     });
@@ -256,32 +276,9 @@ function analyzeAsync(fn: AsyncCallable, file: string, moduleMutables: Set<strin
   return out;
 }
 
-/**
- * Pattern 2 — `Promise.all([...])` siblings writing the same shared target.
- *
- * Two shapes are recognised:
- *
- *   (a) Array-literal arms:
- *         await Promise.all([
- *           (async () => { this.tally = this.tally + 1; })(),
- *           (async () => { this.tally = this.tally + 2; })(),
- *         ]);
- *       Each arm is inspected; targets written by two or more sibling arms
- *       cluster into a finding.
- *
- *   (b) `.map(async)` parallel-callback shape (real-world dominant form):
- *         await Promise.all(items.map(async (item) => {
- *           const cur = this.tally;
- *           await flush(item);
- *           this.tally = cur + 1;
- *         }));
- *       The single async callback is invoked once per element with full
- *       parallelism — every read-modify-write across `await` on a shared
- *       target races against every other invocation. Flagged as a single
- *       finding citing the callback location.
- *
- * Also covers `Promise.allSettled` and `Promise.race`.
- */
+// Pattern 2: Promise.all/allSettled/race. Two shapes:
+//   (a) array-literal arms writing same target → cluster finding
+//   (b) .map(async ...) parallel callback with read→await→write → single finding
 function analyzePromiseAll(
   call: import('ts-morph').CallExpression,
   file: string,
@@ -303,8 +300,9 @@ function analyzePromiseAll(
   }
 
   // (a) array-literal arms.
-  if (arg.getKind() !== SyntaxKind.ArrayLiteralExpression) return [];
-  const elements = (arg as { getElements(): Node[] }).getElements();
+  const arrayArg = arg.asKind(SyntaxKind.ArrayLiteralExpression);
+  if (!arrayArg) return [];
+  const elements = arrayArg.getElements();
   if (elements.length < 2) return [];
 
   // For each arm, collect the function body (arrow / function-expression /
@@ -439,22 +437,20 @@ function analyzeParallelMapCallback(
 
 function resolveFunctionBody(node: Node): Node | null {
   let cur: Node = node;
-  // Iteratively unwrap parenthesised expressions and IIFE invocations.
-  // Accepted shapes:
-  //   `() => {...}`
-  //   `(() => {...})`
-  //   `(() => {...})()`
-  //   `(async () => {...})()`
-  //   `function() {...}` and IIFE forms thereof
+  // Unwrap parens + IIFEs to land on the arrow/function-expression body.
   for (let i = 0; i < 6; i++) {
-    if (cur.getKind() === SyntaxKind.ParenthesizedExpression) {
-      cur = (cur as { getExpression(): Node }).getExpression();
+    const paren = cur.asKind(SyntaxKind.ParenthesizedExpression);
+    if (paren) {
+      cur = paren.getExpression();
       continue;
     }
-    if (cur.getKind() === SyntaxKind.CallExpression) {
-      let inner = (cur as { getExpression(): Node }).getExpression();
-      while (inner.getKind() === SyntaxKind.ParenthesizedExpression) {
-        inner = (inner as { getExpression(): Node }).getExpression();
+    const callShape = cur.asKind(SyntaxKind.CallExpression);
+    if (callShape) {
+      let inner: Node = callShape.getExpression();
+      let innerParen = inner.asKind(SyntaxKind.ParenthesizedExpression);
+      while (innerParen) {
+        inner = innerParen.getExpression();
+        innerParen = inner.asKind(SyntaxKind.ParenthesizedExpression);
       }
       if (
         inner.getKind() === SyntaxKind.ArrowFunction ||
@@ -476,29 +472,11 @@ function resolveFunctionBody(node: Node): Node | null {
   return null;
 }
 
-function findEnclosingFunctionLike(node: Node): Node | null {
-  let cur: Node | undefined = node.getParent();
-  while (cur) {
-    const k = cur.getKind();
-    if (
-      k === SyntaxKind.FunctionDeclaration ||
-      k === SyntaxKind.MethodDeclaration ||
-      k === SyntaxKind.ArrowFunction ||
-      k === SyntaxKind.FunctionExpression
-    ) {
-      return cur;
-    }
-    cur = cur.getParent();
-  }
-  return null;
-}
-
 /**
- * Like `findEnclosingFunctionLike`, but only returns a node that has a
- * `getName()`-resolvable identifier. Useful for surfacing the outer named
- * function on findings whose immediate enclosing scope is an anonymous
- * arrow/IIFE (Promise.all arms, emitter handlers). When no named ancestor
- * exists, falls back to the nearest function-like for source context.
+ * Walk ancestors until a named function-like is hit. Useful for surfacing
+ * the outer named function on findings whose immediate enclosing scope is
+ * an anonymous arrow/IIFE (Promise.all arms, emitter handlers). Falls back
+ * to the nearest function-like when no named ancestor exists.
  */
 function findEnclosingNamedFunction(node: Node): Node | null {
   let nearest: Node | null = null;
@@ -570,12 +548,8 @@ function analyzeEmitterHandler(
   return candidates;
 }
 
-/**
- * Walks up from the registration call's parent scopes and collects every
- * `let`/`var` declaration the handler closes over. `const` is excluded —
- * a const binding can still hold a mutable value (Map/Set/array), but those
- * are tracked through this/member writes rather than identifier writes.
- */
+// let/var bindings the handler closes over. const skipped — mutable
+// contents (Map/Set/Array) are tracked via member writes elsewhere.
 function collectOuterMutables(call: Node, handler: Node): Set<string> {
   const out = new Set<string>();
   let cur: Node | undefined = call.getParent();
@@ -605,29 +579,19 @@ function collectOuterMutables(call: Node, handler: Node): Set<string> {
   return out;
 }
 
-/**
- * Normalise an expression to a canonical key for shared-state tracking.
- * Returns null if the expression is not a recognised shared target.
- *
- *   this.foo            → "this.foo"
- *   this.foo.bar        → "this.foo"  (we track at the top-level prop)
- *   cache               → "cache"     iff `cache` is in moduleMutables
- *   cache[k]            → "cache"     iff `cache` is in moduleMutables
- */
+// Canonical key for shared state. this.foo[.bar] → "this.foo"; bare/elem-access
+// → identifier only if it's a known module mutable. null otherwise.
 function canonicalSharedTarget(expr: Node, moduleMutables: Set<string>): string | null {
   let cur: Node = expr;
   // For PropertyAccessExpression chains, descend to the head identifier or `this`.
-  while (
-    cur.getKind() === SyntaxKind.PropertyAccessExpression ||
-    cur.getKind() === SyntaxKind.ElementAccessExpression
-  ) {
-    const owner = (cur as { getExpression(): Node }).getExpression();
-    if (
-      owner.getKind() === SyntaxKind.ThisKeyword &&
-      cur.getKind() === SyntaxKind.PropertyAccessExpression
-    ) {
+  while (true) {
+    const propAccess = cur.asKind(SyntaxKind.PropertyAccessExpression);
+    const elemAccess = cur.asKind(SyntaxKind.ElementAccessExpression);
+    if (!propAccess && !elemAccess) break;
+    const owner: Node = (propAccess ?? elemAccess!).getExpression();
+    if (propAccess && owner.getKind() === SyntaxKind.ThisKeyword) {
       // `this.<name>` — canonical key.
-      return `this.${(cur as { getName(): string }).getName()}`;
+      return `this.${propAccess.getName()}`;
     }
     cur = owner;
   }

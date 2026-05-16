@@ -10,41 +10,51 @@
  * works.
  */
 :root {
-  --rh-bg:           245 242 235; /* #f5f2eb */
-  --rh-panel:        255 253 247; /* #fffdf7 */
-  --rh-panel-alt:    239 236 228; /* #efece4 */
-  --rh-border:       217 211 196; /* #d9d3c4 */
-  --rh-border-soft:  236 232 219; /* #ece8db */
-  --rh-ink:          26 26 26;    /* #1a1a1a */
-  --rh-muted:        107 103 92;  /* #6b675c */
-  --rh-accent:       236 110 138; /* #ec6e8a */
-  --rh-accent-soft:  244 182 196; /* #f4b6c4 */
+  --rh-bg: 245 242 235; /* #f5f2eb */
+  --rh-panel: 255 253 247; /* #fffdf7 */
+  --rh-panel-alt: 239 236 228; /* #efece4 */
+  --rh-border: 217 211 196; /* #d9d3c4 */
+  --rh-border-soft: 236 232 219; /* #ece8db */
+  --rh-ink: 26 26 26; /* #1a1a1a */
+  --rh-muted: 107 103 92; /* #6b675c */
+  --rh-accent: 236 110 138; /* #ec6e8a */
+  --rh-accent-soft: 244 182 196; /* #f4b6c4 */
 }
 
 .dark {
-  --rh-bg:           15 14 12;    /* #0f0e0c */
-  --rh-panel:        26 24 20;    /* #1a1814 */
-  --rh-panel-alt:    21 19 15;    /* #15130f */
-  --rh-border:       43 38 32;    /* #2b2620 */
-  --rh-border-soft:  34 29 24;    /* #221d18 */
-  --rh-ink:          230 226 216; /* #e6e2d8 */
-  --rh-muted:        138 132 120; /* #8a8478 */
-  --rh-accent:       236 110 138; /* #ec6e8a (kept) */
-  --rh-accent-soft:  120 60 78;   /* deeper soft */
+  --rh-bg: 15 14 12; /* #0f0e0c */
+  --rh-panel: 26 24 20; /* #1a1814 */
+  --rh-panel-alt: 21 19 15; /* #15130f */
+  --rh-border: 43 38 32; /* #2b2620 */
+  --rh-border-soft: 34 29 24; /* #221d18 */
+  --rh-ink: 230 226 216; /* #e6e2d8 */
+  --rh-muted: 138 132 120; /* #8a8478 */
+  --rh-accent: 236 110 138; /* #ec6e8a (kept) */
+  --rh-accent-soft: 120 60 78; /* deeper soft */
 }
 
 @layer base {
-  html, body {
+  html,
+  body {
     background: rgb(var(--rh-bg));
     color: rgb(var(--rh-ink));
   }
   body {
-    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-family:
+      'Inter',
+      -apple-system,
+      system-ui,
+      sans-serif;
     -webkit-font-smoothing: antialiased;
     font-feature-settings: 'cv11', 'ss03';
   }
-  code, pre, .font-mono {
-    font-feature-settings: 'liga' 0, 'calt' 0, 'tnum';
+  code,
+  pre,
+  .font-mono {
+    font-feature-settings:
+      'liga' 0,
+      'calt' 0,
+      'tnum';
   }
 }
 

@@ -23,22 +23,8 @@ export interface TodoCommentsDetectorInput {
   maxFindings?: number;
 }
 
-/**
- * TODO / FIXME / HACK / XXX comment detector.
- *
- * Scans every analysable source file for inline comments containing a
- * marker keyword. Each occurrence becomes a finding citing the file +
- * line + marker. Severities:
- *   - HACK / XXX / WTF                 → MED
- *   - FIXME / BUG                      → MED
- *   - TODO / NOTE / REVIEW             → LOW
- *   - DEPRECATED / DEPRECATE           → LOW
- *
- * The body of the comment after the marker is included in the snippet
- * so the dashboard surfaces the actual note. We deliberately do NOT
- * try to parse ownership / dates / ticket-IDs — that's a follow-up
- * feature once a git-blame integration lands.
- */
+// Inline TODO/FIXME/HACK/XXX/WTF/BUG/NOTE/REVIEW/DEPRECATED comments.
+// HACK/XXX/WTF/FIXME/BUG → MED, rest LOW.
 export function detectTodoComments(input: TodoCommentsDetectorInput): Finding[] {
   const markers = input.markers ?? DEFAULT_MARKERS;
   const maxFindings = input.maxFindings ?? 60;

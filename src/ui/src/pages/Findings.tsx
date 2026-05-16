@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { JSX } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
 import type { Finding, ScanRecord } from '../lib/api.js';
 import { getScan } from '../lib/api.js';
@@ -6,6 +7,8 @@ import { SectionHeader } from '../components/SectionHeader.js';
 import { ClusterPill, SeverityChip } from '../components/Chips.js';
 import { PageSkeleton, RefreshDot } from '../components/Skeleton.js';
 import { comingSoon } from '../lib/toast.js';
+import { setQueue } from '../lib/finding-queue.js';
+import { extractCluster } from '../lib/cluster.js';
 
 interface FindingsProps {
   scanId: string | null;
@@ -32,12 +35,11 @@ export function Findings({
   const [detector, setDetector] = useState<string>(initialDetector ?? 'any');
   const [cluster, setCluster] = useState<string>('any');
   const [directory, setDirectory] = useState<string>(initialDirectory ?? 'any');
-  const [status] = useState<string>('open');
   const [query, setQuery] = useState<string>('');
   const [sort, setSort] = useState<SortKey>('severity-cluster');
   const [grouped, setGrouped] = useState<boolean>(true);
   const [page, setPage] = useState<number>(1);
-  const [view, setView] = useState<'open' | 'false-positive'>('open');
+  const [view, setView] = useState<'open' | 'resolved' | 'false-positive'>('open');
   const pageSize = 18;
 
   useEffect(() => {
@@ -65,9 +67,15 @@ export function Findings({
     };
   }, [scanId]);
 
-  const openFindings = scan?.findings ?? [];
+  // Split scan.findings into open (no resolvedAt) + resolved (has resolvedAt).
+  // Both share the persisted `findings` array — the resolved bucket is a
+  // virtual view on top, populated by the single-finding rerun endpoint.
+  const allLive = scan?.findings ?? [];
+  const openFindings = allLive.filter((f) => !f.resolvedAt);
+  const resolvedFindings = allLive.filter((f) => !!f.resolvedAt);
   const fpFindings = scan?.falsePositives ?? [];
-  const findings = view === 'false-positive' ? fpFindings : openFindings;
+  const findings =
+    view === 'false-positive' ? fpFindings : view === 'resolved' ? resolvedFindings : openFindings;
 
   const detectors = useMemo(
     () => ['any', ...Array.from(new Set(findings.map((f) => f.detectorId))).sort()],
@@ -76,7 +84,9 @@ export function Findings({
   const clusters = useMemo(
     () => [
       'any',
-      ...Array.from(new Set(findings.map((f) => extractCluster(f.title)).filter(Boolean) as string[])).sort(),
+      ...Array.from(
+        new Set(findings.map((f) => extractCluster(f)).filter(Boolean) as string[]),
+      ).sort(),
     ],
     [findings],
   );
@@ -85,9 +95,7 @@ export function Findings({
       'any',
       ...Array.from(
         new Set(
-          findings
-            .map((f) => topLevelDir(f.evidence[0]?.file ?? ''))
-            .filter((d) => d.length > 0),
+          findings.map((f) => topLevelDir(f.evidence[0]?.file ?? '')).filter((d) => d.length > 0),
         ),
       ).sort(),
     ],
@@ -97,8 +105,9 @@ export function Findings({
   const filtered = useMemo(() => {
     let list = findings.filter((f) => sev.has(f.severity));
     if (detector !== 'any') list = list.filter((f) => f.detectorId === detector);
-    if (cluster !== 'any') list = list.filter((f) => extractCluster(f.title) === cluster);
-    if (directory !== 'any') list = list.filter((f) => topLevelDir(f.evidence[0]?.file ?? '') === directory);
+    if (cluster !== 'any') list = list.filter((f) => extractCluster(f) === cluster);
+    if (directory !== 'any')
+      list = list.filter((f) => topLevelDir(f.evidence[0]?.file ?? '') === directory);
     if (query.trim()) {
       const q = query.trim().toLowerCase();
       list = list.filter(
@@ -109,7 +118,8 @@ export function Findings({
       );
     }
     list = list.slice().sort((a, b) => {
-      if (sort === 'severity-cluster') return sevOrder(a) - sevOrder(b) || clusterSize(a, findings) - clusterSize(b, findings);
+      if (sort === 'severity-cluster')
+        return sevOrder(a) - sevOrder(b) || clusterSize(a, findings) - clusterSize(b, findings);
       if (sort === 'severity') return sevOrder(a) - sevOrder(b);
       if (sort === 'age') return 0; // age unknown — TODO once persistAt is exposed per-finding
       if (sort === 'detector') return a.detectorId.localeCompare(b.detectorId);
@@ -130,7 +140,7 @@ export function Findings({
     if (!grouped) {
       return filtered.map((f) => ({
         key: f.fingerprint,
-        cluster: extractCluster(f.title),
+        cluster: extractCluster(f),
         findings: [f],
         worstSeverity: f.severity,
         detectors: new Set([f.detectorId]),
@@ -138,7 +148,7 @@ export function Findings({
     }
     const map = new Map<string, ClusterGroup>();
     for (const f of filtered) {
-      const cluster = extractCluster(f.title);
+      const cluster = extractCluster(f);
       const key = cluster ? `cluster:${cluster}` : `fp:${f.fingerprint}`;
       const g = map.get(key);
       if (g) {
@@ -168,6 +178,15 @@ export function Findings({
   const pageItems = groups.slice(pageStart, pageEnd);
   const totalPages = Math.max(1, Math.ceil(groups.length / pageSize));
 
+  // Open a finding while seeding the cross-page navigation queue with
+  // the CURRENT filtered ordering — FindingDetail uses it to render
+  // Prev / Next buttons + auto-advance after FP / resolve actions.
+  const openFinding = (fp: string): void => {
+    const ordered = filtered.map((f) => f.fingerprint);
+    setQueue(ordered);
+    onOpenFinding(fp);
+  };
+
   if (err && !scan) return <div className="text-high">error: {err}</div>;
   if (!scan && loading) return <PageSkeleton rows={2} />;
   if (!scan) {
@@ -189,8 +208,10 @@ export function Findings({
               {grouped ? `${groups.length} clusters` : `${filtered.length} findings`}
             </span>{' '}
             <span className="text-muted">
-              · {filtered.length} {view === 'false-positive' ? 'flagged' : 'findings'} of{' '}
-              {findings.length} {view === 'false-positive' ? 'FP' : 'open'}
+              · {filtered.length}{' '}
+              {view === 'false-positive' ? 'flagged' : view === 'resolved' ? 'resolved' : 'findings'} of{' '}
+              {findings.length}{' '}
+              {view === 'false-positive' ? 'FP' : view === 'resolved' ? 'resolved' : 'open'}
             </span>
           </span>
         }
@@ -206,12 +227,25 @@ export function Findings({
                 }}
                 className={
                   'px-2.5 py-1 ' +
-                  (view === 'open'
-                    ? 'bg-accent/10 text-accent'
-                    : 'text-muted hover:text-ink')
+                  (view === 'open' ? 'bg-accent/10 text-accent' : 'text-muted hover:text-ink')
                 }
               >
                 open · {openFindings.length}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setView('resolved');
+                  setPage(1);
+                }}
+                className={
+                  'px-2.5 py-1 border-l border-border ' +
+                  (view === 'resolved'
+                    ? 'bg-low/10 text-low'
+                    : 'text-muted hover:text-ink')
+                }
+              >
+                resolved · {resolvedFindings.length}
               </button>
               <button
                 type="button"
@@ -261,7 +295,11 @@ export function Findings({
         directories={directories}
         directory={directory}
         setDirectory={setDirectory}
-        status={status}
+        view={view}
+        setView={(v) => {
+          setView(v);
+          setPage(1);
+        }}
         query={query}
         setQuery={setQuery}
       />
@@ -269,16 +307,19 @@ export function Findings({
       {/* Mobile — card list (≤ md). */}
       <section className="lg:hidden rounded-lg border border-border bg-panel divide-y divide-border-soft">
         {pageItems.length === 0 ? (
-          <div className="px-4 py-8 text-center text-muted text-sm">No findings match the current filter.</div>
+          <div className="px-4 py-8 text-center text-muted text-sm">
+            No findings match the current filter.
+          </div>
         ) : (
           pageItems.map((g) => {
             const lead = g.findings[0]!;
-            const detector = g.detectors.size === 1 ? [...g.detectors][0]! : `${g.detectors.size} detectors`;
+            const detector =
+              g.detectors.size === 1 ? [...g.detectors][0]! : `${g.detectors.size} detectors`;
             return (
               <button
                 key={g.key}
                 type="button"
-                onClick={() => onOpenFinding(lead.fingerprint)}
+                onClick={() => openFinding(lead.fingerprint)}
                 className="w-full text-left px-4 py-3 hover:bg-bg flex flex-col gap-1.5"
               >
                 <div className="flex items-center gap-2 flex-wrap">
@@ -305,9 +346,15 @@ export function Findings({
             {filtered.length === 0 ? 0 : pageStart + 1}–{pageEnd} of {filtered.length}
           </span>
           <div className="flex items-center gap-1">
-            <PageButton disabled={page === 1} onClick={() => setPage(page - 1)}>‹</PageButton>
-            <span className="px-2">{page}/{totalPages}</span>
-            <PageButton disabled={page === totalPages} onClick={() => setPage(page + 1)}>›</PageButton>
+            <PageButton disabled={page === 1} onClick={() => setPage(page - 1)}>
+              ‹
+            </PageButton>
+            <span className="px-2">
+              {page}/{totalPages}
+            </span>
+            <PageButton disabled={page === totalPages} onClick={() => setPage(page + 1)}>
+              ›
+            </PageButton>
           </div>
         </div>
       </section>
@@ -337,9 +384,8 @@ export function Findings({
             ) : (
               pageItems.map((g, i) => {
                 const lead = g.findings[0]!;
-                const detectorLabel = g.detectors.size === 1
-                  ? [...g.detectors][0]!
-                  : `${g.detectors.size} detectors`;
+                const detectorLabel =
+                  g.detectors.size === 1 ? [...g.detectors][0]! : `${g.detectors.size} detectors`;
                 return (
                   <tr
                     key={g.key}
@@ -347,7 +393,7 @@ export function Findings({
                       'cursor-pointer hover:bg-bg border-b border-border-soft last:border-b-0 ' +
                       (i % 2 === 0 ? '' : 'bg-bg/30')
                     }
-                    onClick={() => onOpenFinding(lead.fingerprint)}
+                    onClick={() => openFinding(lead.fingerprint)}
                   >
                     <td className="pl-4 py-2.5">
                       <input
@@ -369,9 +415,7 @@ export function Findings({
                         </span>
                       )}
                     </td>
-                    <td className="py-2.5">
-                      {g.cluster && <ClusterPill name={g.cluster} />}
-                    </td>
+                    <td className="py-2.5">{g.cluster && <ClusterPill name={g.cluster} />}</td>
                     <td className="py-2.5 font-mono text-xs text-muted truncate">
                       {lead.evidence[0]?.file}:{lead.evidence[0]?.range.startLine}
                     </td>
@@ -385,16 +429,24 @@ export function Findings({
         </table>
         <div className="px-5 py-3 border-t border-border-soft flex items-center justify-between text-xs text-muted font-mono">
           <span>
-            Showing <span className="text-ink">{filtered.length === 0 ? 0 : pageStart + 1}–{pageEnd}</span> of {filtered.length}
+            Showing{' '}
+            <span className="text-ink">
+              {filtered.length === 0 ? 0 : pageStart + 1}–{pageEnd}
+            </span>{' '}
+            of {filtered.length}
           </span>
           <div className="flex items-center gap-1">
-            <PageButton disabled={page === 1} onClick={() => setPage(page - 1)}>‹</PageButton>
+            <PageButton disabled={page === 1} onClick={() => setPage(page - 1)}>
+              ‹
+            </PageButton>
             {Array.from({ length: totalPages }, (_, i) => (
               <PageButton key={i} active={page === i + 1} onClick={() => setPage(i + 1)}>
                 {i + 1}
               </PageButton>
             ))}
-            <PageButton disabled={page === totalPages} onClick={() => setPage(page + 1)}>›</PageButton>
+            <PageButton disabled={page === totalPages} onClick={() => setPage(page + 1)}>
+              ›
+            </PageButton>
           </div>
         </div>
       </section>
@@ -414,7 +466,8 @@ interface FilterBarProps {
   directories: string[];
   directory: string;
   setDirectory: (v: string) => void;
-  status: string;
+  view: 'open' | 'resolved' | 'false-positive';
+  setView: (v: 'open' | 'resolved' | 'false-positive') => void;
   query: string;
   setQuery: (v: string) => void;
 }
@@ -431,7 +484,8 @@ function FilterBar({
   directories,
   directory,
   setDirectory,
-  status,
+  view,
+  setView,
   query,
   setQuery,
 }: FilterBarProps): JSX.Element {
@@ -449,7 +503,12 @@ function FilterBar({
       <Dropdown label="detector" value={detector} options={detectors} onChange={setDetector} />
       <Dropdown label="cluster" value={cluster} options={clusters} onChange={setCluster} />
       <Dropdown label="directory" value={directory} options={directories} onChange={setDirectory} />
-      <Dropdown label="status" value={status} options={['open']} onChange={TODO('change status filter (closed/snoozed)')} />
+      <Dropdown
+        label="status"
+        value={view}
+        options={['open', 'resolved', 'false-positive']}
+        onChange={(v) => setView(v as 'open' | 'resolved' | 'false-positive')}
+      />
       <div className="flex-1 min-w-[200px] relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
         <input
@@ -587,11 +646,6 @@ function PageButton({
   );
 }
 
-function extractCluster(title: string): string | null {
-  const m = /`([^`]+)`/.exec(title);
-  return m?.[1] ?? null;
-}
-
 function topLevelDir(file: string): string {
   const parts = file.split('/').filter(Boolean);
   if (parts.length <= 1) return parts[0] ?? '';
@@ -609,8 +663,8 @@ function sevOrder(f: Finding): number {
 }
 
 function clusterSize(f: Finding, all: Finding[]): number {
-  const c = extractCluster(f.title);
+  const c = extractCluster(f);
   if (!c) return 0;
   // Negative count so larger clusters sort first inside same severity.
-  return -all.filter((x) => extractCluster(x.title) === c).length;
+  return -all.filter((x) => extractCluster(x) === c).length;
 }

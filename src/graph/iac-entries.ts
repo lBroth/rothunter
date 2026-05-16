@@ -2,29 +2,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Project, SyntaxKind, type SourceFile } from 'ts-morph';
 
-/**
- * Discover infrastructure-as-code (IaC) entry points by scanning the parsed
- * workspace for CDK / SST / Serverless-framework constructs that wire a file
- * path into the runtime.
- *
- * Today the walker recognises the following patterns:
- *
- *  - `new NodejsFunction(this, 'X', { entry: 'src/handlers/foo.ts', ... })`
- *  - `new lambda.Function(this, 'X', { handler: 'src/handlers/foo.handler' })`
- *  - `new lambda_node.NodejsFunction(this, 'X', { entry: '...' })`
- *  - `new sst.Function(this, 'X', { handler: 'src/handlers/foo.ts' })`
- *  - `new sst.Api(this, 'Api', { routes: { 'GET /x': 'src/routes/x.handler' } })`
- *  - `bundle({ entry: 'src/handlers/foo.ts' })`
- *
- * Each resolved file path is treated as a RotHunter entry point so the
- * dead-module / dead-export detectors don't false-positive on Lambda
- * handler files that nothing statically imports — the runtime loads them
- * by path.
- *
- * The walker is a textual analysis on top of ts-morph's AST: we look at
- * `entry`, `handler`, `code`, and re-use the existing file-resolution
- * logic to map the string back to a workspace-relative path.
- */
+// IaC entry-point walker. Picks up CDK / SST / serverless constructs:
+// NodejsFunction, lambda.Function, sst.Function, sst.Api routes, bundle({...}).
+// Reads `entry` / `handler` / `code` strings → workspace-relative paths.
 export function resolveIacEntryFiles(
   workspaceRoot: string,
   files: ReadonlyArray<string>,

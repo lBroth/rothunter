@@ -22,7 +22,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { RotHunter } from '../rothunter.js';
-import { MlxLlmClient } from '../adapters/mlx-llm.js';
+import { createDefaultLlmClient } from '../adapters/mlx-llm.js';
 
 const LLM_BASE_URL = process.env.ROTHUNTER_LLM_BASE_URL ?? 'http://127.0.0.1:8080/v1';
 
@@ -107,7 +107,7 @@ export interface HandlerB {
     'reports the clear duplicate, runs LLM on the borderline cluster, and leaves the regression guard alone',
     async () => {
       const rothunter = new RotHunter();
-      const llm = new MlxLlmClient();
+      const llm = createDefaultLlmClient();
       const result = await rothunter.run({
         workspaceRoot: workspace,
         llm,

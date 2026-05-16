@@ -19,11 +19,21 @@ export interface Finding {
   evidence: Evidence[];
   suggestion?: string;
   fingerprint: string;
+  /** Unix-ms timestamp when this finding was confirmed resolved via single-finding rerun. */
+  resolvedAt?: number;
 }
 
 export interface ScanRecord {
   scanId: string;
-  state: 'queued' | 'parsing' | 'detecting' | 'llm-start' | 'llm-verdict' | 'snooze' | 'done' | 'error';
+  state:
+    | 'queued'
+    | 'parsing'
+    | 'detecting'
+    | 'llm-start'
+    | 'llm-verdict'
+    | 'snooze'
+    | 'done'
+    | 'error';
   startedAt: number;
   finishedAt?: number;
   findings?: Finding[];
@@ -35,7 +45,15 @@ export interface ScanRecord {
 export interface ScanSseEvent {
   scanId: string;
   ts: number;
-  state: 'queued' | 'parsing' | 'detecting' | 'llm-start' | 'llm-verdict' | 'snooze' | 'done' | 'error';
+  state:
+    | 'queued'
+    | 'parsing'
+    | 'detecting'
+    | 'llm-start'
+    | 'llm-verdict'
+    | 'snooze'
+    | 'done'
+    | 'error';
   files?: number;
   symbols?: number;
   detector?: string;
@@ -89,7 +107,9 @@ export async function startScan(opts: {
   return (await res.json()) as { scanId: string };
 }
 
-export async function getFinding(fingerprint: string): Promise<{ finding: Finding; codeWindow: CodeWindow | null }> {
+export async function getFinding(
+  fingerprint: string,
+): Promise<{ finding: Finding; codeWindow: CodeWindow | null }> {
   const res = await fetch(`/api/findings/${encodeURIComponent(fingerprint)}?context=6`);
   if (!res.ok) throw new Error(`/api/findings/${fingerprint} → ${res.status}`);
   return (await res.json()) as { finding: Finding; codeWindow: CodeWindow | null };
@@ -105,6 +125,12 @@ export interface ScanSeriesEntry {
   low: number;
   total: number;
   note: string | null;
+  /** LLM verdicts emitted in this scan. Null on scans persisted before llmStats shipped. */
+  llmCalls: number | null;
+  /** Median LLM verdict latency, ms. */
+  llmP50Ms: number | null;
+  /** 95th-percentile LLM verdict latency, ms. */
+  llmP95Ms: number | null;
 }
 
 export interface ScanSeriesSummary {
@@ -112,7 +138,42 @@ export interface ScanSeriesSummary {
   currentHigh: number;
   change30d: number;
   avgDurationMs: number | null;
+  /** Mean of per-scan p50 verdict latency across the window. */
   avgVerdictMs: number | null;
+  /** Mean of per-scan p95 verdict latency across the window. */
+  avgP95Ms: number | null;
+}
+
+export interface LlmStats {
+  calls: number;
+  totalLatencyMs: number;
+  meanLatencyMs: number;
+  p50LatencyMs: number;
+  p95LatencyMs: number;
+  byDetector: Record<string, { calls: number; totalLatencyMs: number; p95LatencyMs: number }>;
+}
+
+export type RerunResult =
+  | { status: 'resolved'; resolvedAt: number }
+  | { status: 'still-present'; finding: Finding }
+  | { status: 'unsupported'; reason: string };
+
+export async function rerunFindingVerdict(fingerprint: string): Promise<RerunResult> {
+  const res = await fetch(`/api/findings/${encodeURIComponent(fingerprint)}/rerun`, {
+    method: 'POST',
+  });
+  if (res.status === 422) {
+    const body = (await res.json()) as { reason?: string };
+    return { status: 'unsupported', reason: body.reason ?? 'detector not eligible for single-finding rerun' };
+  }
+  if (!res.ok) throw new Error(`/api/findings/${fingerprint}/rerun → ${res.status}`);
+  return (await res.json()) as RerunResult;
+}
+
+export async function getScanLlmStats(scanId: string): Promise<{ scanId: string; state: string; stats: LlmStats }> {
+  const res = await fetch(`/api/scans/${encodeURIComponent(scanId)}/llm-stats`);
+  if (!res.ok) throw new Error(`/api/scans/${scanId}/llm-stats → ${res.status}`);
+  return (await res.json()) as { scanId: string; state: string; stats: LlmStats };
 }
 
 export interface ScanSeries {
@@ -185,7 +246,9 @@ export async function getSymbolFile(path: string): Promise<SymbolFileResponse> {
 export async function getSymbolDetail(name: string, file?: string): Promise<SymbolDetail | null> {
   const qs = new URLSearchParams();
   if (file) qs.set('file', file);
-  const res = await fetch(`/api/symbols/${encodeURIComponent(name)}${qs.toString() ? '?' + qs : ''}`);
+  const res = await fetch(
+    `/api/symbols/${encodeURIComponent(name)}${qs.toString() ? '?' + qs : ''}`,
+  );
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`/api/symbols/${name} → ${res.status}`);
   return (await res.json()) as SymbolDetail;
@@ -295,7 +358,9 @@ export async function setWorkspace(path: string): Promise<WorkspaceState> {
 }
 
 export async function generateFixPrompt(fingerprint: string): Promise<string> {
-  const res = await fetch(`/api/findings/${encodeURIComponent(fingerprint)}/prompt`, { method: 'POST' });
+  const res = await fetch(`/api/findings/${encodeURIComponent(fingerprint)}/prompt`, {
+    method: 'POST',
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `prompt → ${res.status}`);
@@ -312,20 +377,18 @@ export async function listFalsePositives(): Promise<string[]> {
 }
 
 export async function markFalsePositive(fingerprint: string): Promise<number> {
-  const res = await fetch(
-    `/api/findings/${encodeURIComponent(fingerprint)}/false-positive`,
-    { method: 'POST' },
-  );
+  const res = await fetch(`/api/findings/${encodeURIComponent(fingerprint)}/false-positive`, {
+    method: 'POST',
+  });
   if (!res.ok) throw new Error(`mark FP → ${res.status}`);
   const d = (await res.json()) as { count: number };
   return d.count;
 }
 
 export async function unmarkFalsePositive(fingerprint: string): Promise<number> {
-  const res = await fetch(
-    `/api/findings/${encodeURIComponent(fingerprint)}/false-positive`,
-    { method: 'DELETE' },
-  );
+  const res = await fetch(`/api/findings/${encodeURIComponent(fingerprint)}/false-positive`, {
+    method: 'DELETE',
+  });
   if (!res.ok) throw new Error(`unmark FP → ${res.status}`);
   const d = (await res.json()) as { count: number };
   return d.count;

@@ -170,7 +170,8 @@ export class DuplicateTypeDetector implements Detector {
 }
 
 function isStructurallyTrivial(s: SymbolRecord): boolean {
-  const fields = s.structure?.fields ?? [];
+  const struct = s.structure;
+  const fields = struct && 'fields' in struct ? struct.fields ?? [] : [];
   const kinds = new Set(fields.map(primitiveKindOf));
   // A complex field (method / object / array / union with non-primitive) is a
   // strong signal that the shape is meaningful. Allow it past the trivial gate

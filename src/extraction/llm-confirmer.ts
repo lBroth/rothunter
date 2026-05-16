@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MlxLlmClient } from '../adapters/mlx-llm.js';
+import { MlxLlmClient, createDefaultLlmClient } from '../adapters/mlx-llm.js';
 import { parseLlmJsonResponse } from '../utils/llm-json.js';
 import { logger } from '../utils/logger.js';
 import type { SymbolRecord } from '../types.js';
@@ -71,7 +71,7 @@ export class LlmConfirmer {
   private cache = new Map<string, ConfirmationResult>();
 
   constructor(llm?: MlxLlmClient) {
-    this.llm = llm ?? new MlxLlmClient();
+    this.llm = llm ?? createDefaultLlmClient();
   }
 
   async confirmSameConcept(

@@ -1,17 +1,18 @@
 import * as crypto from 'node:crypto';
 import * as path from 'node:path';
-import {
-  Project,
-  SyntaxKind,
-  type CallExpression,
-  type Node,
-  type PropertyAccessExpression,
-} from 'ts-morph';
+import { Project, SyntaxKind, type CallExpression, type Node } from 'ts-morph';
 import type { Finding } from '../types.js';
 
 export interface ApiRaceDetectorInput {
   workspaceRoot: string;
   files: ReadonlyArray<string>;
+  /**
+   * Pre-built ts-morph Project to reuse parse state across detectors. When
+   * provided the detector skips its own `addSourceFileAtPathIfExists` pass
+   * and reads source files directly from the shared project — saves a
+   * full parse per file × detector.
+   */
+  project?: Project;
 }
 
 interface ApiWriteCall {
@@ -26,38 +27,21 @@ interface ApiWriteCall {
   client: string; // fetch | axios | got | ky | superagent
 }
 
-/**
- * Distributed-race surface — concurrent HTTP writes against the same endpoint.
- *
- * If two functions in different files call PUT / PATCH / DELETE on the same
- * URL pattern, and they can be invoked concurrently (different services /
- * different request handlers / a worker + an API endpoint), the two writes
- * race on the server's state. The detector indexes outbound HTTP writes by
- * (METHOD, pathPattern) and flags clusters with ≥ 2 distinct caller files.
- *
- * Recognised client patterns:
- *   - fetch(url, { method: 'PUT', body, ... })
- *   - fetch(url, { method: 'PATCH' })  // and POST/DELETE
- *   - axios.put(url, ...) / axios.patch / axios.post / axios.delete
- *   - axios({ method: 'put', url, ... })
- *   - got.put(url, ...) / .patch / .post / .delete
- *   - ky.put / .patch / .post / .delete
- *
- * Path normalisation: template-literal interpolations become `:param`,
- * numeric path segments become `:id`, hex tokens like `${ctx.userId}` become
- * `:param`. This is approximate — different files may produce slightly
- * different patterns for the same logical route. Cluster step accepts that.
- *
- * GET is intentionally excluded — it has no race effect. POST is included
- * because it usually creates+writes server state.
- */
+// Indexes PUT/PATCH/POST/DELETE calls by (method, normalized path); flags
+// clusters touched by ≥2 caller files. Clients: fetch, axios, got, ky,
+// superagent. GET excluded. Path interpolations + numeric segments → `:param`.
 export function detectApiRaces(input: ApiRaceDetectorInput): Finding[] {
-  const project = new Project({
-    skipAddingFilesFromTsConfig: true,
-    skipFileDependencyResolution: true,
-  });
-  for (const rel of input.files) {
-    project.addSourceFileAtPathIfExists(path.join(input.workspaceRoot, rel));
+  let project: Project;
+  if (input.project) {
+    project = input.project;
+  } else {
+    project = new Project({
+      skipAddingFilesFromTsConfig: true,
+      skipFileDependencyResolution: true,
+    });
+    for (const rel of input.files) {
+      project.addSourceFileAtPathIfExists(path.join(input.workspaceRoot, rel));
+    }
   }
 
   const calls: ApiWriteCall[] = [];
@@ -197,12 +181,11 @@ function matchHttpClient(call: CallExpression): HttpMatch | null {
 }
 
 function extractUrlLiteral(node: Node): string | null {
-  if (node.getKind() === SyntaxKind.StringLiteral || node.getKind() === SyntaxKind.NoSubstitutionTemplateLiteral) {
-    return (node as { getLiteralText(): string }).getLiteralText();
-  }
+  const strLit = node.asKind(SyntaxKind.StringLiteral) ?? node.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
+  if (strLit) return strLit.getLiteralText();
   if (node.getKind() === SyntaxKind.TemplateExpression) {
     // Reconstruct path with `:param` placeholders for each interpolation.
-    const text = (node as { getText(): string }).getText();
+    const text = node.getText();
     return text
       .slice(1, -1) // strip the backticks
       .replace(/\$\{[^}]+\}/g, ':param');
@@ -219,13 +202,8 @@ function extractFetchMethod(optsNode: Node): string | null {
 }
 
 function extractStringFromNode(node: Node): string | null {
-  if (
-    node.getKind() === SyntaxKind.StringLiteral ||
-    node.getKind() === SyntaxKind.NoSubstitutionTemplateLiteral
-  ) {
-    return (node as { getLiteralText(): string }).getLiteralText();
-  }
-  return null;
+  const lit = node.asKind(SyntaxKind.StringLiteral) ?? node.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
+  return lit ? lit.getLiteralText() : null;
 }
 
 /**

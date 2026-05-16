@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 interface KpiCellProps {
   label: string;
   value: string | number;
@@ -24,24 +25,23 @@ export function KpiCell({ label, value, delta, tone = 'ink', suffix }: KpiCellPr
         {label}
       </div>
       <div className="flex items-baseline gap-2 flex-wrap">
-        <span className={`font-serif text-[28px] sm:text-[36px] leading-none tabular-nums ${toneClass}`}>
+        <span
+          className={`font-serif text-[28px] sm:text-[36px] leading-none tabular-nums ${toneClass}`}
+        >
           {value}
         </span>
         {suffix && <span className="text-xs font-mono text-muted">{suffix}</span>}
         {delta != null && delta !== 0 && (
           <span
             className={
-              'text-[11px] font-mono tabular-nums ' +
-              (delta > 0 ? 'text-high' : 'text-low')
+              'text-[11px] font-mono tabular-nums ' + (delta > 0 ? 'text-high' : 'text-low')
             }
           >
             {delta > 0 ? '↑' : '↓'}
             {Math.abs(delta)}
           </span>
         )}
-        {delta === 0 && (
-          <span className="text-[11px] font-mono text-muted">— 0</span>
-        )}
+        {delta === 0 && <span className="text-[11px] font-mono text-muted">— 0</span>}
       </div>
     </div>
   );

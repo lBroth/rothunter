@@ -1,7 +1,7 @@
 # RotHunter local stack.
 #
 # Usage:
-#   docker compose -f src/rothunter/docker/docker-compose.yml \
+#   docker compose -f src/docker/docker-compose.yml \
 #       up --build
 #
 #   Then open http://localhost:3000 in a browser. The mounted workspace
@@ -38,6 +38,13 @@ services:
       - rothunter-models:/root/.cache/huggingface
     expose:
       - "8080"
+    # Published to the host as well so `npm run dev` on the host can hit
+    # the sidecar at http://127.0.0.1:8080 without needing the rothunter
+    # server container in the loop. Safe locally; in a shared-network
+    # deployment you would remove this to keep the LLM behind the
+    # compose network only.
+    ports:
+      - "8080:8080"
     # Uncomment when running with NVIDIA GPUs (image swap above too):
     # deploy:
     #   resources:
@@ -54,8 +61,8 @@ services:
 
   rothunter:
     build:
-      context: ../../..
-      dockerfile: src/rothunter/docker/Dockerfile
+      context: ../..
+      dockerfile: src/docker/Dockerfile
     depends_on:
       rothunter-llm:
         condition: service_healthy
@@ -64,7 +71,7 @@ services:
       ROTHUNTER_LLM_MODEL: bartowski/Qwen2.5-Coder-14B-Instruct-GGUF
       ROTHUNTER_WORKSPACE: /workspace
     volumes:
-      - ${ROTHUNTER_WORKSPACE_HOST:-../../..}:/workspace:rw
+      - ${ROTHUNTER_WORKSPACE_HOST:-../..}:/workspace:rw
     ports:
       - "3000:3000"
 

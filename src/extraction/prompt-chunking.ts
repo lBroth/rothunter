@@ -1,26 +1,14 @@
-/**
- * Prompt chunking for cluster-style confirmers (shared-db-write, api-race).
- *
- * Strategy: never truncate function bodies. A long enclosing function is
- * exactly where the decision signal lives — cutting it loses context.
- * Instead, split the cluster into PAIRWISE chunks (2 sites per LLM call,
- * full source preserved) and aggregate the per-pair verdicts.
- *
- * Pairwise semantics: a cluster of N sites yields ceil(N/2) chunks when
- * we partition consecutively, or all C(N,2) pairs when we exhaustively
- * compare every pair. We use the consecutive-partition form for cost:
- *   - 2 sites → 1 chunk, 1 LLM call (the common case — detector fires on ≥ 2).
- *   - 3 sites → ceil(3/2) = 2 chunks (sites 1-2 and 3 alone).
- *   - 4 sites → 2 chunks (1-2, 3-4).
- *
- * A single-site chunk still gets a verdict — the prompt is phrased so the
- * LLM evaluates whether THIS writer alone is enough to call the cluster
- * racy (e.g. obvious cross-flow signal in its file path / function name).
- *
- * Aggregation: race wins. Cluster is race if any chunk says race ≥ 0.7.
- */
+// Prompt chunking for cluster confirmers. Never truncate bodies — split
+// into consecutive pairs (2 sites/call), aggregate per-chunk verdicts.
+// Race wins: cluster is race if any chunk says race ≥ 0.7.
 
-export const MAX_SITES_PER_CALL = 4;
+// Caller code (rothunter.ts) feeds confirmers up to 8 call sites per
+// cluster. Keep this cap aligned with that slice so the LLM sees the
+// whole cluster — earlier versions silently dropped sites 5..8. The
+// single-call vs chunked decision is delegated to estimatePromptChars
+// + PROMPT_BUDGET_CHARS — small clusters still fit one prompt, large
+// ones split into CHUNK_SITE_LIMIT-sized chunks.
+export const MAX_SITES_PER_CALL = 8;
 export const PROMPT_BUDGET_CHARS = 3500;
 export const CHUNK_SITE_LIMIT = 2;
 

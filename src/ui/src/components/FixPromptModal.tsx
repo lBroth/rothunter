@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import type { JSX } from 'react';
 import { Check, Copy, Loader2, Sparkles, X } from 'lucide-react';
 import { generateFixPrompt } from '../lib/api.js';
 import { toast } from '../lib/toast.js';
+import { copyText } from '../lib/clipboard.js';
 
 interface FixPromptModalProps {
   fingerprint: string;
@@ -9,7 +11,7 @@ interface FixPromptModalProps {
 }
 
 /**
- * Modal that asks the Tier-3 sidecar to compose a prompt the operator
+ * Modal that asks the LLM sidecar to compose a prompt the operator
  * can paste into Claude Code / Codex / Copilot Chat / Cursor to apply
  * the fix. Generation is server-side; the modal only renders the result
  * and provides a one-click copy.
@@ -31,15 +33,36 @@ export function FixPromptModal({ fingerprint, onClose }: FixPromptModalProps): J
 
   const onCopy = async (): Promise<void> => {
     if (!prompt) return;
-    await navigator.clipboard.writeText(prompt);
-    setCopied(true);
-    toast('Prompt copied to clipboard.', 'info');
-    setTimeout(() => setCopied(false), 1500);
+    try {
+      await copyText(prompt);
+      setCopied(true);
+      toast('Prompt copied to clipboard.', 'info');
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      toast(`Copy failed: ${(e as Error).message}`, 'warn');
+    }
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+      className="fixed z-50 bg-black/80 backdrop-blur-md flex items-center justify-center"
+      style={{
+        // iOS Safari `100vh` excludes the dynamic browser chrome — the
+        // backdrop ends short of the status bar / home indicator and the
+        // app peeks through above and below the modal. Over-extend the
+        // fixed positioning past the viewport edges (`top: -100px`,
+        // `bottom: -100px`) so the dark layer always covers the
+        // dynamic toolbar regardless of dvh support. Safe-area padding
+        // keeps the centred modal box clear of the notch + home bar.
+        top: '-100px',
+        left: 0,
+        right: 0,
+        bottom: '-100px',
+        paddingTop: 'calc(100px + max(0.75rem, env(safe-area-inset-top)))',
+        paddingBottom: 'calc(100px + max(0.75rem, env(safe-area-inset-bottom)))',
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -66,7 +89,7 @@ export function FixPromptModal({ fingerprint, onClose }: FixPromptModalProps): J
           {loading && (
             <div className="flex items-center justify-center py-12 text-muted text-xs font-mono">
               <Loader2 size={14} className="animate-spin mr-2" />
-              asking the Tier-3 model to compose a prompt…
+              asking the LLM to compose a prompt…
             </div>
           )}
           {err && (

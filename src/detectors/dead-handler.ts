@@ -12,27 +12,9 @@ export interface DeadHandlerDetectorInput {
   imports: ReadonlyArray<ImportRecord>;
 }
 
-/**
- * Surface handler files that look like they should be wired by IaC (live in
- * `src/handlers/`, `src/lambdas/`, `netlify/functions/`, …) but are NOT
- * referenced by any IaC construct AND are not imported anywhere.
- *
- * The detector is intentionally precise — handler files matched by the
- * entry-points heuristic are *protected* from dead-module, which keeps
- * dead-module's precision high. This detector inverts that: it asks
- * "fine, the file is in a handler dir, but is it actually wired?".
- *
- * False-positive control:
- *   - Only fires on the handler-convention pattern (not on Next.js, Vercel
- *     /api, Cloudflare workers — those are wired by filesystem convention,
- *     no IaC needed).
- *   - Skips files referenced by any IaC entry string the iac-entries walker
- *     resolved (`entry`, `handler`, `code`, `routes: ...`).
- *   - Skips files imported (statically or dynamically) by any other file.
- *   - Confidence 0.65 — runtime may load handlers via a path defined in a
- *     config file (`serverless.yml`, `sam.template.yaml`) that ts-morph
- *     does not parse. The dashboard / .rothunterignore handles that tail.
- */
+// Files in handler-convention dirs (src/handlers, src/lambdas, …) that are
+// neither IaC-referenced nor imported anywhere. Confidence 0.65 (runtime
+// config-file wiring is invisible to ts-morph).
 export function detectDeadHandlers(input: DeadHandlerDetectorInput): Finding[] {
   const importedTargets = new Set<string>();
   for (const imp of input.imports) {

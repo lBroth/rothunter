@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { JSX } from 'react';
 import { ChevronDown, Loader2, Trash2 } from 'lucide-react';
 import type { ScanSeries, ScanSeriesEntry } from '../lib/api.js';
 import { deleteScan, getScanSeries } from '../lib/api.js';
@@ -44,14 +45,12 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
   }, [win, reloadTick]);
 
   const onDelete = async (scanId: string): Promise<void> => {
-    // eslint-disable-next-line no-alert
     if (!window.confirm(`Delete scan #${scanId.slice(0, 8)}? This cannot be undone.`)) return;
     setBusyId(scanId);
     try {
       await deleteScan(scanId);
       setReloadTick((t) => t + 1);
     } catch (e) {
-      // eslint-disable-next-line no-alert
       window.alert((e as Error).message);
     } finally {
       setBusyId(null);
@@ -71,9 +70,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
         title={
           <span>
             <span className="text-ink tabular-nums">{summary?.count ?? 0} scans</span>{' '}
-            <span className="text-muted">
-              · {oldestRelative(entries)}
-            </span>
+            <span className="text-muted">· {oldestRelative(entries)}</span>
           </span>
         }
         meta={
@@ -88,8 +85,8 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
         <header className="px-5 py-3 border-b border-border-soft flex items-baseline gap-3 flex-wrap">
           <span className="text-sm font-semibold text-ink">HIGH findings · trend</span>
           <span className="text-xs text-muted font-mono">
-            last {entries.length} scan{entries.length === 1 ? '' : 's'} ·
-            area is open-but-not-yet-fixed
+            last {entries.length} scan{entries.length === 1 ? '' : 's'} · area is
+            open-but-not-yet-fixed
           </span>
           <button
             type="button"
@@ -113,12 +110,20 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
             tone={summary && summary.change30d <= 0 ? 'low' : 'high'}
           />
           <KpiCell
-            label="avg verdict latency"
+            label="p50 verdict"
             value={summary?.avgVerdictMs ? `${summary.avgVerdictMs} ms` : '—'}
           />
           <KpiCell
+            label="p95 verdict"
+            value={summary?.avgP95Ms ? `${summary.avgP95Ms} ms` : '—'}
+          />
+          <KpiCell
             label="avg scan"
-            value={summary?.avgDurationMs != null ? formatDuration(Math.round(summary.avgDurationMs / 1000)) : '—'}
+            value={
+              summary?.avgDurationMs != null
+                ? formatDuration(Math.round(summary.avgDurationMs / 1000))
+                : '—'
+            }
           />
         </KpiStrip>
 
@@ -146,16 +151,26 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                 <li key={e.scanId} className="px-4 py-3 flex items-start gap-2">
                   <button
                     type="button"
-                    onClick={() => onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()}
+                    onClick={() =>
+                      onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()
+                    }
                     className="flex-1 text-left hover:bg-bg flex flex-col gap-1 text-xs font-mono"
                   >
                     <div className="flex items-center gap-2">
-                      <span className={i === 0 ? 'w-1.5 h-1.5 rounded-full bg-accent' : 'w-1.5 h-1.5 rounded-full bg-border'} />
+                      <span
+                        className={
+                          i === 0
+                            ? 'w-1.5 h-1.5 rounded-full bg-accent'
+                            : 'w-1.5 h-1.5 rounded-full bg-border'
+                        }
+                      />
                       <span className="text-ink">#{e.scanId.slice(0, 12)}</span>
                       <span className="text-muted ml-auto">{relative(e.startedAt)}</span>
                     </div>
                     <div className="flex items-center gap-3 text-muted">
-                      <span>{e.durationMs ? formatDuration(Math.round(e.durationMs / 1000)) : '—'}</span>
+                      <span>
+                        {e.durationMs ? formatDuration(Math.round(e.durationMs / 1000)) : '—'}
+                      </span>
                       <span className={'tabular-nums ' + (e.high > 0 ? 'text-high' : 'text-muted')}>
                         H {e.high}
                       </span>
@@ -174,7 +189,11 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                     aria-label="Delete scan"
                     className="w-7 h-7 rounded flex items-center justify-center text-muted hover:text-high hover:bg-high/10 disabled:opacity-40"
                   >
-                    {busyId === e.scanId ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={13} />}
+                    {busyId === e.scanId ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={13} />
+                    )}
                   </button>
                 </li>
               ))}
@@ -201,32 +220,59 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                   >
                     <td
                       className="pl-5 py-2.5 font-mono text-xs text-ink cursor-pointer"
-                      onClick={() => onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()}
+                      onClick={() =>
+                        onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()
+                      }
                     >
                       <span className="flex items-center gap-2">
-                        <span className={i === 0 ? 'w-1.5 h-1.5 rounded-full bg-accent' : 'w-1.5 h-1.5 rounded-full bg-border'} />
+                        <span
+                          className={
+                            i === 0
+                              ? 'w-1.5 h-1.5 rounded-full bg-accent'
+                              : 'w-1.5 h-1.5 rounded-full bg-border'
+                          }
+                        />
                         #{e.scanId.slice(0, 12)}
                       </span>
                     </td>
                     <td
                       className="py-2.5 font-mono text-xs text-muted cursor-pointer"
-                      onClick={() => onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()}
+                      onClick={() =>
+                        onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()
+                      }
                     >
                       {relative(e.startedAt)}
                     </td>
                     <td
                       className="py-2.5 font-mono text-xs text-muted cursor-pointer"
-                      onClick={() => onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()}
+                      onClick={() =>
+                        onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()
+                      }
                     >
                       {e.durationMs ? formatDuration(Math.round(e.durationMs / 1000)) : '—'}
                     </td>
-                    <td className={'py-2.5 text-right font-mono tabular-nums ' + (e.high > 0 ? 'text-high' : 'text-muted')}>
+                    <td
+                      className={
+                        'py-2.5 text-right font-mono tabular-nums ' +
+                        (e.high > 0 ? 'text-high' : 'text-muted')
+                      }
+                    >
                       {e.high}
                     </td>
-                    <td className={'py-2.5 text-right font-mono tabular-nums ' + (e.med > 0 ? 'text-med' : 'text-muted')}>
+                    <td
+                      className={
+                        'py-2.5 text-right font-mono tabular-nums ' +
+                        (e.med > 0 ? 'text-med' : 'text-muted')
+                      }
+                    >
                       {e.med}
                     </td>
-                    <td className={'py-2.5 text-right font-mono tabular-nums ' + (e.low > 0 ? 'text-low' : 'text-muted')}>
+                    <td
+                      className={
+                        'py-2.5 text-right font-mono tabular-nums ' +
+                        (e.low > 0 ? 'text-low' : 'text-muted')
+                      }
+                    >
                       {e.low}
                     </td>
                     <td className="py-2.5 pl-6 text-xs text-muted">{e.note ?? '—'}</td>
@@ -238,7 +284,11 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                         aria-label="Delete scan"
                         className="w-7 h-7 rounded inline-flex items-center justify-center text-muted hover:text-high hover:bg-high/10 disabled:opacity-40"
                       >
-                        {busyId === e.scanId ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={13} />}
+                        {busyId === e.scanId ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={13} />
+                        )}
                       </button>
                     </td>
                   </tr>
@@ -321,7 +371,9 @@ function buildTrendPath(entries: ScanSeriesEntry[]): { line: string; area: strin
     const y = h - (e.high / max) * (h - 20) - 10;
     return [x, y] as const;
   });
-  const line = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const line = pts
+    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(' ');
   const area = line + ` L${w},${h} L0,${h} Z`;
   return { line, area };
 }

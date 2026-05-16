@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Construction } from 'lucide-react';
 
@@ -22,9 +23,7 @@ export function Placeholder({
   return (
     <div className="max-w-3xl mx-auto py-24 text-center">
       <Icon size={48} strokeWidth={1.5} className="mx-auto text-muted mb-6" />
-      <div className="text-[11px] uppercase tracking-widest text-muted font-mono mb-2">
-        {phase}
-      </div>
+      <div className="text-[11px] uppercase tracking-widest text-muted font-mono mb-2">{phase}</div>
       <h1 className="font-serif text-3xl text-ink mb-3">{title}</h1>
       {subtitle && <p className="text-muted">{subtitle}</p>}
     </div>

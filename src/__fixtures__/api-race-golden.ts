@@ -2,7 +2,7 @@
  * Golden ground-truth verdicts for the api-race LLM confirmer.
  *
  * Each entry maps a clustered finding (identified by `<METHOD> <pathPattern>`)
- * to the expected Tier-3 verdict. The eval harness scans every fixture file
+ * to the expected LLM verdict. The eval harness scans every fixture file
  * under `__fixtures__/api-race/`, runs `detectApiRaces`, matches each cluster
  * to a golden entry, and compares the LLM verdict.
  *

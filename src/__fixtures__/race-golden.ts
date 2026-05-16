@@ -2,7 +2,7 @@
  * Golden ground-truth verdicts for the race-condition LLM confirmer.
  *
  * Each entry maps a finding (identified by its `enclosingName`) to the
- * expected Tier-3 verdict. The eval harness scans
+ * expected LLM verdict. The eval harness scans
  * `race-fixtures.ts`, runs the deterministic race-condition detector,
  * matches each finding to a golden entry, and compares the LLM verdict.
  *

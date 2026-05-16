@@ -14,13 +14,7 @@ interface Cluster {
 /** Functions shorter than this many body characters (after collapse) are too small to mean anything. */
 const MIN_BODY_CHARS = 16;
 
-/**
- * Minimum Jaccard similarity for two function bodies to be flagged as near-duplicate.
- * Chosen so that an added 1-2 line guard inside an otherwise-identical body still
- * crosses the threshold (a Jaccard around 0.5-0.7 is typical for that scenario
- * with 4-token shingles); below 0.65 a function whose body is 30%+ different is
- * a different function in practice.
- */
+// Below 0.65 Jaccard a 30%+ different body is a different function in practice.
 const NEAR_DUP_THRESHOLD = 0.65;
 
 /** Minimum shingle-set size on both sides for near-dup pairing (avoids 1-line bodies). */

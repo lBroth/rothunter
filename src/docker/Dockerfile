@@ -17,16 +17,16 @@
 # =========================================
 
 # --- 1. UI build --------------------------------------------------------
-FROM node:22-alpine AS ui-build
+FROM node:24-alpine AS ui-build
 WORKDIR /app/ui
-COPY src/rothunter/ui/package.json src/rothunter/ui/package-lock.json ./
-COPY src/rothunter/ui/.npmrc ./
+COPY src/ui/package.json src/ui/package-lock.json ./
+COPY src/ui/.npmrc ./
 RUN npm install --no-audit --no-fund
-COPY src/rothunter/ui/ ./
+COPY src/ui/ ./
 RUN npm run build
 
 # --- 2. Runtime ---------------------------------------------------------
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 ENV ROTHUNTER_PORT=3000
@@ -38,14 +38,23 @@ ENV ROTHUNTER_LLM_MODEL=bartowski/Qwen2.5-Coder-14B-Instruct-GGUF
 COPY package.json package-lock.json ./
 # Production deps only, plus tsx (dev dep in package.json but the runtime
 # needs it because we ship TS source — see Dockerfile header for why).
-RUN npm install --omit=dev --no-audit --no-fund --ignore-scripts \
+#
+# The host's lockfile may resolve dependencies through a private
+# CodeArtifact mirror (some developers run this image from machines
+# logged into corporate npm). Inside the container we have no auth for
+# those URLs, so override the registry to the public npm and drop the
+# lockfile — fresh resolve always uses public npm and never tries to
+# authenticate against the host's private mirror.
+RUN echo "registry=https://registry.npmjs.org/" > .npmrc \
+  && rm -f package-lock.json \
+  && npm install --omit=dev --no-audit --no-fund --ignore-scripts \
   && npm install --no-save --no-audit --no-fund tsx@^4 \
   && npm cache clean --force
 
 COPY tsconfig.json ./
 COPY src ./src
-COPY --from=ui-build /app/ui/dist ./src/rothunter/ui/dist
+COPY --from=ui-build /app/ui/dist ./src/ui/dist
 
 EXPOSE 3000
 VOLUME ["/workspace"]
-CMD ["npx", "tsx", "src/rothunter/server/index.ts"]
+CMD ["npx", "tsx", "src/server/index.ts"]

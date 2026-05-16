@@ -14,20 +14,8 @@ export interface DeadModuleDetectorInput {
   reachable: ReadonlySet<string>;
 }
 
-/**
- * File-level dead-code detector.
- *
- * A file is a candidate dead module when ALL of:
- *   - It is in the parsed file set,
- *   - It is NOT reachable from any entry point,
- *   - It is NOT itself an entry point (some entries have no inbound imports
- *     because the runtime / build tool loads them by convention),
- *   - It does not look like a type-declaration or ambient file (.d.ts, etc.).
- *
- * Severity defaults to `low` because false positives on framework conventions
- * (route handlers, decorators, eval'd loaders) are common — humans should
- * snooze or extend the entry-point heuristic when that happens.
- */
+// Files not reachable from any entry point + not themselves entry points
+// + not .d.ts/ambient. LOW — framework conventions create FPs; snooze.
 export function detectDeadModules(input: DeadModuleDetectorInput): Finding[] {
   const findings: Finding[] = [];
   for (const file of input.files) {

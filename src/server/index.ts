@@ -1,226 +1,87 @@
-/**
- * RotHunter server — Fastify HTTP API + SSE scan stream + static UI host.
- *
- * Mounts the user's repository at `/workspace` (read-only) inside the Docker
- * container, exposes a thin HTTP layer over the existing `RotHunter` engine,
- * and serves the React/Vite UI from `../ui/dist/`.
- *
- * Endpoints:
- *   GET  /api/health                    — health probe + sidecar status
- *   GET  /api/workspaces                — list mounted workspaces under /workspace
- *   POST /api/scans                     — start a new scan (returns {scanId})
- *   GET  /api/scans                     — list past scans (paged)
- *   GET  /api/scans/:scanId             — single scan with full findings
- *   GET  /api/scans/:scanId/stream      — Server-Sent Events progress
- *   GET  /api/findings/:fingerprint     — single finding + code window
- *   POST /api/findings/:fp/false-positive — mark FP (workspace-scoped, sticky)
- *
- * Persistence: scans + findings live under `/workspace/.rothunter/` so a
- * remount-and-rerun preserves history across container restarts. SQLite is
- * deferred — current release stores newline-delimited JSON per scan.
- */
+// Fastify HTTP API + SSE scan stream + static UI host.
+// Scans + findings persist under <workspace>/.rothunter/ (one JSON file per scan).
 import Fastify from 'fastify';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
-import { existsSync, statSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { RotHunter, type ScanProgressEvent } from '../rothunter.js';
-import { MlxLlmClient } from '../adapters/mlx-llm.js';
+import { existsSync, statSync } from 'node:fs';
+import { RotHunter } from '../rothunter.js';
+import { createDefaultLlmClient } from '../adapters/mlx-llm.js';
 import { TypeScriptParser, type ParseResult } from '../parsers/typescript-parser.js';
 import { logger } from '../utils/logger.js';
 import type { Finding } from '../types.js';
+import { DETECTOR_IDS as ALL_DETECTORS } from '../detector-registry.js';
+import {
+  FS_ALLOW_ROOTS,
+  isUnderAllowRoot,
+  initWorkspaceStore,
+  getWorkspaceRoot,
+  setWorkspaceRoot,
+  getRecentWorkspaces,
+  persistCurrentWorkspace,
+  readPersistedWorkspace,
+} from './workspace-store.js';
+import { readSettings, writeSettings, type AppSettings } from './settings-store.js';
+import {
+  readFalsePositives,
+  writeFalsePositives,
+  splitFalsePositives,
+} from './false-positives.js';
 
 const PORT = Number(process.env.ROTHUNTER_PORT ?? 3000);
-const HOST = process.env.ROTHUNTER_HOST ?? '0.0.0.0';
-// Default `/workspace` matches the Docker mount; in dev mode (`npm run
-// rothunter:dev` on the host) `/workspace` does not exist, so fall back
-// to the current working directory. The active workspace is mutable
-// (in-process) via POST /api/workspace and persists across restarts in
+// Loopback by default — `npm run server` on the host should not expose the
+// filesystem-reaching endpoints to the LAN. Docker sets ROTHUNTER_HOST=0.0.0.0
+// explicitly when LAN exposure is intended.
+const HOST = process.env.ROTHUNTER_HOST ?? '127.0.0.1';
+
+// Boot-time workspace selection. Default `/workspace` matches the Docker
+// mount; in dev mode (`npm run rothunter:dev` on the host) `/workspace`
+// does not exist, so fall back to the current working directory. The
+// active workspace is mutable via POST /api/workspace and persists in
 // ~/.rothunter/workspace.json — never inside the workspace itself, since
 // changing the workspace would otherwise lose the pointer.
-const CONFIG_DIR = path.join(os.homedir(), '.rothunter');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'workspace.json');
-
-interface WorkspaceConfig {
-  current: string;
-  recent: string[];
-}
-
-function readWorkspaceConfig(): WorkspaceConfig | null {
-  try {
-    if (!existsSync(CONFIG_FILE)) return null;
-    return JSON.parse(readFileSync(CONFIG_FILE, 'utf-8')) as WorkspaceConfig;
-  } catch {
-    return null;
-  }
-}
-
-function writeWorkspaceConfig(cfg: WorkspaceConfig): void {
-  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
-}
-
-const envWorkspace = process.env.ROTHUNTER_WORKSPACE;
-const persisted = readWorkspaceConfig();
-let WORKSPACE_ROOT =
-  envWorkspace ??
-  persisted?.current ??
+const bootCandidate =
+  process.env.ROTHUNTER_WORKSPACE ??
+  readPersistedWorkspace()?.current ??
   (existsSync('/workspace') ? '/workspace' : process.cwd());
-let RECENT_WORKSPACES: string[] = persisted?.recent ?? [WORKSPACE_ROOT];
-
-function persistWorkspace(): void {
-  try {
-    writeWorkspaceConfig({ current: WORKSPACE_ROOT, recent: RECENT_WORKSPACES });
-  } catch (err) {
-    logger.warn({ err }, 'Failed to persist workspace config');
-  }
+if (!isUnderAllowRoot(bootCandidate)) {
+  // Two failure modes:
+  //   1. cwd outside roots — operator probably ran `npm run server` from
+  //      somewhere unexpected. Hard-fail with guidance so the workspace
+  //      switch endpoint isn't immediately broken too.
+  //   2. persisted/env workspace outside roots — same fix, same exit.
+  logger.error(
+    { candidate: bootCandidate, allowRoots: FS_ALLOW_ROOTS },
+    'Boot workspace outside ROTHUNTER_FS_ROOTS. Set ROTHUNTER_FS_ROOTS or run from inside one of the allow-roots.',
+  );
+  process.exit(1);
 }
+initWorkspaceStore(bootCandidate);
 
-/**
- * In-process settings — survive across restarts via
- * ~/.rothunter/settings.json. The Settings page edits this; scan start
- * picks defaults from here when the request body omits them.
- */
-const ALL_DETECTORS = [
-  'duplicate-type',
-  'duplicate-function',
-  'dead-module',
-  'dead-export',
-  'dead-handler',
-  'mutation',
-  'race-condition',
-  'shared-db-write',
-  'api-race',
-  'bad-config',
-  'silent-catch',
-  'skip-tests',
-  'long-file',
-  'long-function',
-  'console-log-prod',
-  'magic-numbers',
-  'deep-nesting',
-  'public-any',
-  'mutable-globals',
-  'unused-deps',
-  'hot-hub-file',
-  'similar-functions',
-  'todo-comments',
-] as const;
-
-interface AppSettings {
-  detectors: Record<string, boolean>;
-  minConfidence: number;
-  /**
-   * Number of LLM verdict requests in flight at once. 1 = sequential
-   * (original behaviour). 4-8 is a good default on llama.cpp run with
-   * `--parallel N -cb` (continuous batching), or on vLLM where dynamic
-   * batching is on by default. Mlx_lm.server serialises internally so
-   * setting >1 there gives little gain and may wedge the server.
-   */
-  llmConcurrency: number;
-}
-
-const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
-
-function defaultSettings(): AppSettings {
-  const detectors: Record<string, boolean> = {};
-  for (const id of ALL_DETECTORS) detectors[id] = true;
-  // Auto-tune LLM concurrency: default to half the CPU cores, clamped
-  // to [1, 8]. Most laptops land at 4 — a sane balance between local
-  // llama.cpp throughput and OS responsiveness during a scan.
-  const cores = Math.max(1, os.cpus().length);
-  const auto = Math.max(1, Math.min(8, Math.floor(cores / 2)));
-  return { detectors, minConfidence: 0.6, llmConcurrency: auto };
-}
-
-function readSettings(): AppSettings {
-  try {
-    if (!existsSync(SETTINGS_FILE)) return defaultSettings();
-    const raw = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) as Partial<AppSettings>;
-    const base = defaultSettings();
-    return {
-      detectors: { ...base.detectors, ...(raw.detectors ?? {}) },
-      minConfidence: typeof raw.minConfidence === 'number' ? raw.minConfidence : base.minConfidence,
-      llmConcurrency:
-        typeof raw.llmConcurrency === 'number' && raw.llmConcurrency >= 1
-          ? Math.min(16, Math.floor(raw.llmConcurrency))
-          : base.llmConcurrency,
-    };
-  } catch {
-    return defaultSettings();
-  }
-}
-
-function writeSettings(s: AppSettings): void {
-  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2));
-}
-
-let SETTINGS: AppSettings = readSettings();
+const SETTINGS: AppSettings = readSettings();
 
 const UI_DIST = path.resolve(import.meta.dirname, '../ui/dist');
 
-/**
- * SSE event shape (server → browser). `state` is the high-level lifecycle
- * tag; the optional progress fields mirror `ScanProgressEvent` from the
- * RotHunter engine so the frontend renders the live pipeline without a
- * second schema.
- */
-interface ScanSseEvent {
-  scanId: string;
-  ts: number;
-  state: 'queued' | 'parsing' | 'detecting' | 'llm-start' | 'llm-verdict' | 'snooze' | 'done' | 'error';
-  files?: number;
-  symbols?: number;
-  detector?: string;
-  llmDone?: number;
-  llmTotal?: number;
-  verdict?: {
-    detectorId: string;
-    race: boolean;
-    confidence: number;
-    reason: string;
-    latencyMs: number;
-    cluster?: string;
-  };
-  findings?: number;
-  durationMs?: number;
-  error?: string;
-}
-
-interface ScanRecord {
-  scanId: string;
-  workspaceRoot: string;
-  state: ScanSseEvent['state'];
-  startedAt: number;
-  finishedAt?: number;
-  detectorsAllow?: string[];
-  detectorsDeny?: string[];
-  minConfidence: number;
-  // Latest progress snapshot — what the dashboard renders before the scan
-  // settles. Kept narrow so the SSE payload size stays predictable.
-  progress?: ScanSseEvent;
-  // Captured verdict stream for replay when a late subscriber connects.
-  verdictLog: Array<NonNullable<ScanSseEvent['verdict']>>;
-  findings?: Finding[];
-  /**
-   * Findings whose fingerprint is in the workspace-scoped FP set. They
-   * are excluded from the main `findings` array and surfaced in their
-   * own section so the operator can still see what was detected without
-   * mixing them into the real bug list.
-   */
-  falsePositives?: Finding[];
-  symbolsCount?: number;
-  error?: string;
-}
-
-const scans = new Map<string, ScanRecord>();
-const sseClients = new Map<string, Set<import('node:http').ServerResponse>>();
-// Set of scanIds the operator has cancelled. The detector loop is
-// synchronous so we can't truly interrupt it mid-detector, but the LLM
-// confirmation pass checks this set between verdicts and bails out —
-// LLM time dominates total scan duration.
-const cancelledScans = new Set<string>();
+import {
+  scans,
+  sseClients,
+  cancelledScans,
+  scanHistoryCache,
+  SCAN_QUEUE_LIMIT,
+  evictOldScans,
+  acquireScanSlot,
+  releaseScanSlot,
+  dropQueuedScan,
+  broadcast,
+  applyProgressToRecord,
+  persistScan,
+  loadScanHistory,
+  getRunningScanId,
+  getScanQueueLength,
+  summarizeLlmStats,
+  type ScanRecord,
+  type ScanSseEvent,
+} from './scan-store.js';
 
 /**
  * Cached parse result powering the Symbol-graph endpoints. Filled lazily
@@ -239,69 +100,13 @@ async function getOrParseWorkspace(): Promise<ParseResult> {
     return parseCache.result;
   }
   const parser = new TypeScriptParser();
-  const result = await parser.parseWorkspaceFull({ workspaceRoot: WORKSPACE_ROOT });
+  const result = await parser.parseWorkspaceFull({ workspaceRoot: getWorkspaceRoot() });
   parseCache = { parsedAt: Date.now(), result };
   return result;
 }
 
 function invalidateParseCache(): void {
   parseCache = null;
-}
-
-function broadcast(scanId: string, event: ScanSseEvent): void {
-  const clients = sseClients.get(scanId);
-  if (!clients) return;
-  const payload = `data: ${JSON.stringify(event)}\n\n`;
-  for (const res of clients) {
-    try {
-      res.write(payload);
-    } catch {
-      clients.delete(res);
-    }
-  }
-}
-
-function applyProgressToRecord(record: ScanRecord, event: ScanProgressEvent): ScanSseEvent {
-  const sse: ScanSseEvent = { scanId: record.scanId, ts: Date.now(), state: event.state as ScanSseEvent['state'] };
-  switch (event.state) {
-    case 'parsing':
-      record.state = 'parsing';
-      if (event.files != null) sse.files = event.files;
-      if (event.symbols != null) sse.symbols = event.symbols;
-      break;
-    case 'detecting':
-      record.state = 'detecting';
-      sse.detector = event.detector;
-      break;
-    case 'llm-start':
-      record.state = 'llm-start';
-      sse.llmTotal = event.total;
-      break;
-    case 'llm-verdict':
-      record.state = 'llm-verdict';
-      sse.llmDone = event.done;
-      sse.llmTotal = event.total;
-      sse.verdict = {
-        detectorId: event.detectorId,
-        race: event.race,
-        confidence: event.confidence,
-        reason: event.reason,
-        latencyMs: event.latencyMs,
-        cluster: event.cluster,
-      };
-      record.verdictLog.push(sse.verdict);
-      break;
-    case 'snooze':
-      record.state = 'snooze';
-      break;
-    case 'done':
-      record.state = 'done';
-      sse.findings = event.findings;
-      sse.durationMs = event.durationMs;
-      break;
-  }
-  record.progress = sse;
-  return sse;
 }
 
 async function startScan(opts: {
@@ -323,11 +128,25 @@ async function startScan(opts: {
     verdictLog: [],
   };
   scans.set(scanId, record);
-  invalidateParseCache(); // fresh scan = fresh parse
+  evictOldScans();
   broadcast(scanId, { scanId, ts: Date.now(), state: 'queued' });
 
   // Fire and forget — the SSE channel relays state changes.
   void (async () => {
+    try {
+      await acquireScanSlot(scanId);
+    } catch {
+      // Queue entry was dropped (cancel while queued). Record is already
+      // marked errored by the cancel handler; nothing else to do.
+      return;
+    }
+    // Cancellation that fired while we were queued — release the slot
+    // and skip the parse. The record is already marked errored.
+    if (cancelledScans.has(scanId) || record.state === 'error') {
+      releaseScanSlot();
+      return;
+    }
+    invalidateParseCache(); // fresh scan = fresh parse
     try {
       const rothunter = new RotHunter();
       const result = await rothunter.run({
@@ -351,6 +170,7 @@ async function startScan(opts: {
       record.findings = split.findings;
       record.falsePositives = split.falsePositives;
       record.symbolsCount = result.symbols.length;
+      record.llmStats = summarizeLlmStats(record.verdictLog);
       await persistScan(record);
     } catch (err) {
       record.state = 'error';
@@ -358,77 +178,28 @@ async function startScan(opts: {
       record.finishedAt = Date.now();
       broadcast(scanId, { scanId, ts: Date.now(), state: 'error', error: record.error });
       logger.error({ scanId, err }, 'RotHunter scan failed');
+    } finally {
+      releaseScanSlot();
+      // Drain SSE client set for this scan — listeners auto-prune on close
+      // (line ~895) but the outer Map entry survives. Force the cleanup so
+      // long-running servers don't accumulate empty Sets keyed by completed
+      // scanIds. The disconnect close handler still no-ops if the entry is
+      // gone (Set.delete on a removed Set just throws nothing visible).
+      const clients = sseClients.get(scanId);
+      if (clients) {
+        for (const res of clients) {
+          try {
+            res.end();
+          } catch {
+            // socket may already be torn down
+          }
+        }
+        sseClients.delete(scanId);
+      }
     }
   })();
 
   return scanId;
-}
-
-/**
- * Workspace-scoped false-positive store. The fingerprint set lives at
- * `<workspace>/.rothunter/false-positives.json` so it follows the repo
- * (commit it, share across the team, survive workspace switches). On
- * every scan completion we partition `result.findings` into normal vs
- * false-positives — the latter never disappear from the report but get
- * a dedicated section in the UI.
- */
-function falsePositivesFile(workspaceRoot: string): string {
-  return path.join(workspaceRoot, '.rothunter', 'false-positives.json');
-}
-
-function readFalsePositives(workspaceRoot: string): Set<string> {
-  const file = falsePositivesFile(workspaceRoot);
-  if (!existsSync(file)) return new Set();
-  try {
-    const raw = JSON.parse(readFileSync(file, 'utf-8')) as { fingerprints?: string[] };
-    return new Set(raw.fingerprints ?? []);
-  } catch {
-    return new Set();
-  }
-}
-
-function writeFalsePositives(workspaceRoot: string, set: Set<string>): void {
-  const file = falsePositivesFile(workspaceRoot);
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(
-    file,
-    JSON.stringify({ fingerprints: [...set].sort() }, null, 2),
-    'utf-8',
-  );
-}
-
-function splitFalsePositives(
-  findings: Finding[],
-  fpSet: ReadonlySet<string>,
-): { findings: Finding[]; falsePositives: Finding[] } {
-  if (fpSet.size === 0) return { findings, falsePositives: [] };
-  const ok: Finding[] = [];
-  const fp: Finding[] = [];
-  for (const f of findings) (fpSet.has(f.fingerprint) ? fp : ok).push(f);
-  return { findings: ok, falsePositives: fp };
-}
-
-async function persistScan(record: ScanRecord): Promise<void> {
-  const dir = path.join(record.workspaceRoot, '.rothunter', 'scans');
-  await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${record.scanId}.json`);
-  await fs.writeFile(file, JSON.stringify(record, null, 2), 'utf-8');
-}
-
-async function loadScanHistory(workspaceRoot: string): Promise<ScanRecord[]> {
-  const dir = path.join(workspaceRoot, '.rothunter', 'scans');
-  if (!existsSync(dir)) return [];
-  const files = await fs.readdir(dir);
-  const records: ScanRecord[] = [];
-  for (const f of files.filter((n) => n.endsWith('.json'))) {
-    try {
-      const raw = await fs.readFile(path.join(dir, f), 'utf-8');
-      records.push(JSON.parse(raw) as ScanRecord);
-    } catch (err) {
-      logger.warn({ file: f, err }, 'Failed to load scan history entry');
-    }
-  }
-  return records.sort((a, b) => b.startedAt - a.startedAt);
 }
 
 const app = Fastify({ logger: false });
@@ -436,25 +207,17 @@ const app = Fastify({ logger: false });
 app.get('/api/health', async () => ({
   ok: true,
   version: '0.1.0',
-  workspaceRoot: WORKSPACE_ROOT,
+  workspaceRoot: getWorkspaceRoot(),
   llm: process.env.ROTHUNTER_LLM_BASE_URL ?? 'http://127.0.0.1:8080/v1',
 }));
 
-/**
- * GET /api/fs/list?path=/abs/path — directory listing for the folder
- * picker. Returns:
- *   {
- *     path:    "/abs/path",        // resolved
- *     parent:  "/abs" | null,      // null at fs root
- *     entries: [{ name, isDir, isHidden }]
- *   }
- *
- * Defaults to the user's home directory when `path` is missing. Files
- * are included (greyed in UI) so users see context; only dirs are
- * navigable / selectable.
- */
+// GET /api/fs/list?path — directory listing for the folder picker.
+// Defaults to $HOME. Files included for context; only dirs navigable.
 app.get<{ Querystring: { path?: string } }>('/api/fs/list', async (req, reply) => {
   const target = path.resolve(req.query.path?.trim() || os.homedir());
+  if (!isUnderAllowRoot(target)) {
+    return reply.code(403).send({ error: 'path outside allowed roots' });
+  }
   if (!existsSync(target)) return reply.code(404).send({ error: 'path does not exist' });
   const stat = statSync(target);
   if (!stat.isDirectory()) return reply.code(400).send({ error: 'not a directory' });
@@ -483,17 +246,17 @@ app.get<{ Querystring: { path?: string } }>('/api/fs/list', async (req, reply) =
 });
 
 app.get('/api/workspaces', async () => {
-  if (!existsSync(WORKSPACE_ROOT)) {
+  if (!existsSync(getWorkspaceRoot())) {
     return { workspaces: [] };
   }
-  const stat = statSync(WORKSPACE_ROOT);
+  const stat = statSync(getWorkspaceRoot());
   // Single workspace mount (the common Docker case).
   if (!stat.isDirectory()) return { workspaces: [] };
   return {
     workspaces: [
       {
-        path: WORKSPACE_ROOT,
-        name: path.basename(WORKSPACE_ROOT),
+        path: getWorkspaceRoot(),
+        name: path.basename(getWorkspaceRoot()),
       },
     ],
   };
@@ -504,9 +267,9 @@ app.get('/api/workspaces', async () => {
  * picker reads this on mount.
  */
 app.get('/api/workspace', async () => ({
-  current: WORKSPACE_ROOT,
-  name: path.basename(WORKSPACE_ROOT),
-  recent: RECENT_WORKSPACES,
+  current: getWorkspaceRoot(),
+  name: path.basename(getWorkspaceRoot()),
+  recent: getRecentWorkspaces(),
 }));
 
 /**
@@ -519,28 +282,37 @@ app.post<{ Body: { path: string } }>('/api/workspace', async (req, reply) => {
   const target = req.body?.path?.trim();
   if (!target) return reply.code(400).send({ error: 'path required' });
   if (!path.isAbsolute(target)) return reply.code(400).send({ error: 'absolute path required' });
+  if (!isUnderAllowRoot(target)) {
+    return reply.code(403).send({ error: 'workspace outside allowed roots' });
+  }
   if (!existsSync(target)) return reply.code(404).send({ error: 'path does not exist' });
   if (!statSync(target).isDirectory()) return reply.code(400).send({ error: 'not a directory' });
-  WORKSPACE_ROOT = target;
-  RECENT_WORKSPACES = [target, ...RECENT_WORKSPACES.filter((p) => p !== target)].slice(0, 8);
+  setWorkspaceRoot(target);
   invalidateParseCache();
-  persistWorkspace();
-  logger.info({ workspaceRoot: WORKSPACE_ROOT }, 'Workspace switched');
-  return { current: WORKSPACE_ROOT, recent: RECENT_WORKSPACES };
+  scanHistoryCache.delete(target);
+  await persistCurrentWorkspace();
+  logger.info({ workspaceRoot: target }, 'Workspace switched');
+  return { current: target, recent: getRecentWorkspaces() };
 });
 
-app.post<{ Body: { detectors?: string[]; minConfidence?: number } }>('/api/scans', async (req) => {
+app.post<{ Body: { detectors?: string[]; minConfidence?: number } }>('/api/scans', async (req, reply) => {
+  const queued = getScanQueueLength() + (getRunningScanId() ? 1 : 0);
+  if (queued >= SCAN_QUEUE_LIMIT) {
+    return reply
+      .code(429)
+      .send({ error: `scan queue full (${queued}/${SCAN_QUEUE_LIMIT}); wait for the current scan to finish` });
+  }
   const body = req.body ?? {};
   // When the caller doesn't pin detectors, derive the allow-list from
   // persisted settings — only the ones the operator left toggled ON run.
   const allowFromSettings = ALL_DETECTORS.filter((id) => SETTINGS.detectors[id] !== false);
   const scanId = await startScan({
-    workspaceRoot: WORKSPACE_ROOT,
+    workspaceRoot: getWorkspaceRoot(),
     detectorsAllow: body.detectors ?? allowFromSettings,
     minConfidence: body.minConfidence ?? SETTINGS.minConfidence,
     llmConcurrency: SETTINGS.llmConcurrency,
   });
-  return { scanId };
+  return { scanId, queuePosition: getScanQueueLength() };
 });
 
 /**
@@ -552,14 +324,12 @@ app.post<{ Body: { detectors?: string[]; minConfidence?: number } }>('/api/scans
  * Detectors planned but not yet shipped. The UI shows them in the
  * Settings list with a "coming soon" pill so the operator knows what is
  * on the roadmap. They are not executed by the engine.
+ *
+ * Roadmap entries live in private/ROADMAP.md — don't list unshipped
+ * detectors here unless they are imminent. Surfacing speculative items
+ * on the dashboard becomes a public promise.
  */
-const COMING_SOON_DETECTORS: Array<{ id: string; blurb: string }> = [
-  {
-    id: 'pii-leak',
-    blurb:
-      'PII + secret data-leak scanner powered by nullpii. Walks source + logger calls + console.info / console.warn / structured-log payloads for emails, phone numbers, national IDs, addresses, payment-card numbers, passport / driver-licence patterns, AND committed credentials (AWS / GitHub / OpenAI / Anthropic / Stripe keys + hardcoded localhost URLs). Unified redaction telemetry — supersedes the older standalone secret-leak detector.',
-  },
-];
+const COMING_SOON_DETECTORS: Array<{ id: string; blurb: string }> = [];
 
 function settingsPayload() {
   return {
@@ -605,7 +375,7 @@ app.post<{
     }
   }
   try {
-    writeSettings(SETTINGS);
+    await writeSettings(SETTINGS);
   } catch (err) {
     logger.warn({ err }, 'Failed to persist settings');
   }
@@ -614,22 +384,8 @@ app.post<{
   return settingsPayload();
 });
 
-/**
- * GET /api/llm/health — probes the Tier-3 LLM endpoint so the Settings
- * page can show a green/red dot without baking llama.cpp specifics into
- * the UI.
- */
-/**
- * POST /api/findings/:fp/prompt
- *
- * Generates a copy-paste-ready prompt the operator can hand to a coding
- * assistant (Claude Code / Codex / Copilot Chat / Cursor) to fix the
- * finding. The Tier-3 model already has full code context loaded for
- * verdicts, so reusing it here gives a contextual prompt without spinning
- * up a second model.
- *
- * Returns `{ prompt: string }`. The UI renders it in a copyable block.
- */
+// POST /api/findings/:fp/prompt — copy-paste prompt for an agent (Claude
+// Code / Cursor / Copilot Chat) to fix the finding via the LLM.
 app.post<{ Params: { fp: string } }>('/api/findings/:fp/prompt', async (req, reply) => {
   const fp = decodeURIComponent(req.params.fp);
   // Find the finding — prefer the latest in-memory done scan, fall back to disk.
@@ -643,7 +399,7 @@ app.post<{ Params: { fp: string } }>('/api/findings/:fp/prompt', async (req, rep
     }
   }
   if (!finding) {
-    const hist = await loadScanHistory(WORKSPACE_ROOT);
+    const hist = await loadScanHistory(getWorkspaceRoot());
     for (const s of hist) {
       const hit = s.findings?.find((f) => f.fingerprint === fp);
       if (hit) {
@@ -655,17 +411,32 @@ app.post<{ Params: { fp: string } }>('/api/findings/:fp/prompt', async (req, rep
   if (!finding) return reply.code(404).send({ error: 'finding not found' });
 
   const evidenceBlock = finding.evidence
-    .map((e, i) => `Evidence ${i + 1} · ${e.file}:${e.range.startLine}-${e.range.endLine}\n${e.snippet}`)
+    .map(
+      (e, i) =>
+        `Evidence ${i + 1} — \`${e.file}:${e.range.startLine}-${e.range.endLine}\`\n\`\`\`\n${e.snippet}\n\`\`\``,
+    )
     .join('\n\n');
+  const filesToInspect = Array.from(new Set(finding.evidence.map((e) => e.file)));
+  const filesBlock = filesToInspect.map((f) => `- \`${f}\``).join('\n');
 
-  const system = `You are a senior TypeScript engineer. The user is pasting your output into a coding agent (Claude Code, Codex, Cursor, Copilot Chat). Produce a single self-contained prompt that:
-- explains the defect briefly
-- cites file paths + line ranges exactly
-- asks the agent to propose a minimal patch
-- requests tests where they make sense
-- ends with "respond with the unified diff"
+  const system = `You are a senior TypeScript engineer drafting a prompt for ANOTHER coding agent (Claude Code, Codex, Cursor, Copilot Chat) to fix a static-analysis finding. The user will copy-paste your output verbatim into that agent. Your output must therefore be a SELF-CONTAINED instruction set, not a description.
 
-Output ONLY the prompt body — no preamble, no markdown fence.`;
+Hard rules for the prompt you produce:
+
+1. Open with a one-sentence statement of the defect (severity + detector).
+2. Include a "## Files to inspect" section listing every file path verbatim as a backtick-quoted bullet list — the agent must open every one before proposing changes.
+3. Include a "## Evidence" section with each \`file:lineStart-lineEnd\` location followed by the code snippet in a fenced code block. Preserve line numbers exactly.
+4. Include a "## Required behaviour" section that summarises what the code SHOULD do after the fix, derived from the description + suggestion.
+5. Include a "## Constraints" section that explicitly forbids workarounds. Use these literal bullets (adapt wording only if a constraint genuinely doesn't apply):
+   - Fix the ROOT CAUSE — no try/catch swallowing, no \`@ts-ignore\` / \`any\` casts, no commented-out code.
+   - Do NOT add backwards-compatibility shims, feature flags, or "TODO later" stubs.
+   - Do NOT widen types, suppress lint rules, or skip tests to make the error go away.
+   - Keep the change MINIMAL — touch only what the defect requires.
+   - Match existing project conventions (imports, formatting, error handling).
+   - Add or update unit tests when the file already has a sibling test; otherwise note why tests are not added.
+6. End with: "Apply the fix directly to the files listed above. If the right fix would require a larger refactor than the constraints allow, STOP and explain in plain text instead of editing — do not patch around the constraints."
+
+Output ONLY the prompt body. No preamble. No markdown fence around the whole thing. Use Markdown section headings inside the body.`;
 
   const user = `Detector: ${finding.detectorId}
 Severity: ${finding.severity}
@@ -677,19 +448,22 @@ ${finding.description}
 Suggested direction from RotHunter:
 ${finding.suggestion ?? '(none)'}
 
-Code evidence:
+Files to inspect (must appear verbatim in the "## Files to inspect" section of the output):
+${filesBlock}
+
+Code evidence (must appear verbatim in the "## Evidence" section of the output):
 ${evidenceBlock}
 
 Generate the prompt now.`;
 
-  const llm = new MlxLlmClient();
+  const llm = createDefaultLlmClient();
   try {
     const prompt = await llm.chat(
       [
         { role: 'system', content: system },
         { role: 'user', content: user },
       ],
-      { temperature: 0.2, maxTokens: 700, timeoutMs: 90_000 },
+      { temperature: 0.2, maxTokens: 1400, timeoutMs: 120_000 },
     );
     return { prompt: prompt.trim() };
   } catch (err) {
@@ -711,8 +485,117 @@ app.get('/api/llm/health', async (_, reply) => {
   }
 });
 
+/**
+ * POST /api/findings/:fp/rerun — re-run the originating detector on the
+ * subset of files referenced by the finding, then re-run the LLM
+ * confirmer if the finding survives the deterministic pass. Returns:
+ *
+ *   - { status: 'resolved' }                  — detector no longer
+ *     reports the issue when re-run on the evidence files alone.
+ *   - { status: 'still-present', finding }    — issue still detected;
+ *     `finding` is the refreshed object (new confidence / severity /
+ *     verdict after the LLM pass).
+ *
+ * Cross-file detectors (duplicate-type, dead-export, dead-api,
+ * dead-module, similar-functions, unused-deps, same-name-evolution,
+ * hot-hub-file, todo-comments) are technically less accurate when run
+ * on a subset — they rely on whole-workspace state to declare a symbol
+ * unused, a type a duplicate, an import unreferenced, etc. The endpoint
+ * still runs them on the evidence subset and reports the result as the
+ * operator's intent: "did MY change fix MY finding?". The persisted
+ * scan record is updated either way so History / Findings views
+ * reflect the resolution without a manual rescan.
+ */
+app.post<{ Params: { fp: string } }>('/api/findings/:fp/rerun', async (req, reply) => {
+  const fp = decodeURIComponent(req.params.fp);
+
+  // Locate the originating scan + finding. Walk live scans first (most
+  // common case: user just finished a scan, clicked into the finding,
+  // pasted the fix prompt into Claude Code, came back). Fall back to
+  // disk history if not in memory.
+  let owningScan: ScanRecord | undefined;
+  let finding: Finding | undefined;
+  for (const s of scans.values()) {
+    if (s.state !== 'done' || !s.findings) continue;
+    const hit = s.findings.find((f) => f.fingerprint === fp);
+    if (hit) {
+      owningScan = s;
+      finding = hit;
+      break;
+    }
+  }
+  if (!finding) {
+    const hist = await loadScanHistory(getWorkspaceRoot());
+    for (const s of hist) {
+      const hit = s.findings?.find((f) => f.fingerprint === fp);
+      if (hit) {
+        owningScan = s;
+        finding = hit;
+        break;
+      }
+    }
+  }
+  if (!finding || !owningScan) return reply.code(404).send({ error: 'finding not found' });
+
+  const filesFromEvidence = Array.from(new Set(finding.evidence.map((e) => e.file)));
+  if (filesFromEvidence.length === 0) {
+    return reply.code(422).send({ status: 'unsupported', reason: 'finding has no file evidence to re-check' });
+  }
+
+  // Re-run just this detector against just the evidence files. The
+  // engine's `ignoreSnoozeFile` keeps suppressed fingerprints OUT of the
+  // result so a previously-snoozed copy of the same finding doesn't
+  // mask the deterministic re-evaluation.
+  const rothunter = new RotHunter();
+  let result;
+  try {
+    result = await rothunter.run({
+      workspaceRoot: owningScan.workspaceRoot,
+      files: filesFromEvidence,
+      detectorsAllow: new Set([finding.detectorId]),
+      ignoreSnoozeFile: true,
+      llmConcurrency: SETTINGS.llmConcurrency,
+    });
+  } catch (err) {
+    return reply.code(502).send({ status: 'error', error: (err as Error).message });
+  }
+
+  const refreshed = result.findings.find((f) => f.fingerprint === fp);
+
+  if (!refreshed) {
+    // Finding gone — flip the persisted record to resolved instead of
+    // deleting it. Operators want a paper trail: which findings did we
+    // fix, when, in which scan? Deleting the entry hides that history
+    // and breaks the "show resolved" filter in the Findings page.
+    const now = Date.now();
+    if (owningScan.findings) {
+      owningScan.findings = owningScan.findings.map((f) =>
+        f.fingerprint === fp ? { ...f, resolvedAt: now } : f,
+      );
+    }
+    try {
+      await persistScan(owningScan);
+    } catch (err) {
+      logger.warn({ err, scanId: owningScan.scanId }, 'rerun: failed to persist resolved finding');
+    }
+    return { status: 'resolved' as const, resolvedAt: now };
+  }
+
+  // Still present — update in-place. Same fingerprint, possibly new
+  // confidence / severity / description from the re-issued LLM verdict.
+  if (owningScan.findings) {
+    owningScan.findings = owningScan.findings.map((f) => (f.fingerprint === fp ? refreshed : f));
+  }
+  try {
+    await persistScan(owningScan);
+  } catch (err) {
+    logger.warn({ err, scanId: owningScan.scanId }, 'rerun: failed to persist refreshed finding');
+  }
+  return { status: 'still-present' as const, finding: refreshed };
+});
+
 app.get('/api/scans', async () => {
-  const history = await loadScanHistory(WORKSPACE_ROOT);
+  const history = await loadScanHistory(getWorkspaceRoot());
   // Live scans (still in-memory) merged in front.
   const live = [...scans.values()].filter((s) => s.state !== 'done' && s.state !== 'error');
   return { scans: [...live, ...history.slice(0, 50)] };
@@ -722,7 +605,7 @@ app.get<{ Params: { scanId: string } }>('/api/scans/:scanId', async (req, reply)
   const live = scans.get(req.params.scanId);
   if (live) return live;
   // Disk lookup
-  const dir = path.join(WORKSPACE_ROOT, '.rothunter', 'scans');
+  const dir = path.join(getWorkspaceRoot(), '.rothunter', 'scans');
   const file = path.join(dir, `${req.params.scanId}.json`);
   if (!existsSync(file)) {
     return reply.code(404).send({ error: 'scan not found' });
@@ -731,31 +614,46 @@ app.get<{ Params: { scanId: string } }>('/api/scans/:scanId', async (req, reply)
 });
 
 /**
- * GET /api/scans/:scanId/diff?vs=<prevScanId>
- * Diff the requested scan's findings against `vs` (defaults to the
- * previous scan in history). Returned shape:
- *   {
- *     base: <prev scanId>,
- *     added:      <findings present in current but not in base>,
- *     removed:    <findings present in base but not in current>,
- *     persisting: <findings present in both>,
- *   }
- * Identity is fingerprint equality.
+ * GET /api/scans/:scanId/llm-stats — aggregate LLM telemetry.
+ *
+ * Computed once at scan-finish and persisted on `ScanRecord.llmStats`.
+ * For historical scans (persisted before this endpoint shipped), the
+ * stats are recomputed on the fly from `verdictLog` so the History view
+ * shows numbers without a manual migration. Mid-flight scans return
+ * stats for the verdicts seen so far — useful to spot a wedged backend
+ * (p95 climbing scan-over-scan).
  */
+app.get<{ Params: { scanId: string } }>('/api/scans/:scanId/llm-stats', async (req, reply) => {
+  let record = scans.get(req.params.scanId);
+  if (!record) {
+    const file = path.join(getWorkspaceRoot(), '.rothunter', 'scans', `${req.params.scanId}.json`);
+    if (!existsSync(file)) return reply.code(404).send({ error: 'scan not found' });
+    try {
+      record = JSON.parse(await fs.readFile(file, 'utf-8')) as ScanRecord;
+    } catch {
+      return reply.code(500).send({ error: 'scan record unreadable' });
+    }
+  }
+  const stats = record.llmStats ?? summarizeLlmStats(record.verdictLog ?? []);
+  return { scanId: record.scanId, state: record.state, stats };
+});
+
+// GET /api/scans/:scanId/diff?vs=<id> — { base, added, removed, persisting }
+// by fingerprint equality. `vs` defaults to previous scan with findings.
 app.get<{ Params: { scanId: string }; Querystring: { vs?: string } }>(
   '/api/scans/:scanId/diff',
   async (req, reply) => {
     const live = scans.get(req.params.scanId);
     let current: ScanRecord | undefined = live;
     if (!current) {
-      const dir = path.join(WORKSPACE_ROOT, '.rothunter', 'scans');
+      const dir = path.join(getWorkspaceRoot(), '.rothunter', 'scans');
       const file = path.join(dir, `${req.params.scanId}.json`);
       if (existsSync(file)) current = JSON.parse(await fs.readFile(file, 'utf-8')) as ScanRecord;
     }
     if (!current) return reply.code(404).send({ error: 'scan not found' });
     if (!current.findings) return reply.code(409).send({ error: 'scan still in flight' });
 
-    const history = await loadScanHistory(WORKSPACE_ROOT);
+    const history = await loadScanHistory(getWorkspaceRoot());
     let base: ScanRecord | null = null;
     if (req.query.vs) {
       base = history.find((s) => s.scanId === req.query.vs) ?? null;
@@ -820,13 +718,8 @@ app.get<{ Params: { scanId: string } }>('/api/scans/:scanId/stream', (req, reply
   });
 });
 
-/**
- * GET /api/scans/series?window=30d
- * Returns the time series the Scan history page renders: scanId,
- * timestamps, duration, severity counts, and an optional `note` for the
- * recent-scans table. Sourced from the on-disk scan history under
- * `<workspace>/.rothunter/scans/*.json`, sorted newest-first.
- */
+// GET /api/scans/series?window=30d — time series for the History page.
+// Sourced from <workspace>/.rothunter/scans/*.json, newest first.
 interface ScanSeriesEntry {
   scanId: string;
   startedAt: number;
@@ -837,6 +730,12 @@ interface ScanSeriesEntry {
   low: number;
   total: number;
   note: string | null;
+  /** LLM verdicts emitted in this scan, when persisted. */
+  llmCalls: number | null;
+  /** Median LLM verdict latency, ms. Null on pre-llmStats scans. */
+  llmP50Ms: number | null;
+  /** 95th-percentile LLM verdict latency, ms. Null on pre-llmStats scans. */
+  llmP95Ms: number | null;
 }
 
 app.get<{ Querystring: { window?: string } }>('/api/scans/series', async (req) => {
@@ -844,7 +743,7 @@ app.get<{ Querystring: { window?: string } }>('/api/scans/series', async (req) =
   const days = /^(\d+)d$/.test(win) ? Number(win.slice(0, -1)) : 30;
   const cutoff = Date.now() - days * 86400_000;
 
-  const history = await loadScanHistory(WORKSPACE_ROOT);
+  const history = await loadScanHistory(getWorkspaceRoot());
   const entries: ScanSeriesEntry[] = history
     .filter((s) => s.startedAt >= cutoff)
     .map((s) => {
@@ -854,6 +753,10 @@ app.get<{ Querystring: { window?: string } }>('/api/scans/series', async (req) =
         else if (f.severity === 'medium') counts.med += 1;
         else counts.low += 1;
       }
+      // Prefer persisted llmStats; fall back to a lazy recompute from
+      // verdictLog so old scans (persisted before llmStats shipped) still
+      // surface latency in the History view.
+      const stats = s.llmStats ?? (s.verdictLog?.length ? summarizeLlmStats(s.verdictLog) : null);
       return {
         scanId: s.scanId,
         startedAt: s.startedAt,
@@ -864,6 +767,9 @@ app.get<{ Querystring: { window?: string } }>('/api/scans/series', async (req) =
         low: counts.low,
         total: counts.high + counts.med + counts.low,
         note: null,
+        llmCalls: stats?.calls ?? null,
+        llmP50Ms: stats?.p50LatencyMs ?? null,
+        llmP95Ms: stats?.p95LatencyMs ?? null,
       };
     });
 
@@ -879,6 +785,18 @@ app.get<{ Querystring: { window?: string } }>('/api/scans/series', async (req) =
             .map((e) => e.durationMs ?? 0)
             .reduce((a, b) => a + b, 0) / entries.length,
         );
+  // Average verdict latency across the window — only counts scans that
+  // emitted at least one verdict so empty fast scans don't pull the mean
+  // toward zero.
+  const withLlm = entries.filter((e) => e.llmP50Ms != null && e.llmCalls && e.llmCalls > 0);
+  const avgVerdictMs =
+    withLlm.length === 0
+      ? null
+      : Math.round(withLlm.reduce((s, e) => s + (e.llmP50Ms ?? 0), 0) / withLlm.length);
+  const avgP95Ms =
+    withLlm.length === 0
+      ? null
+      : Math.round(withLlm.reduce((s, e) => s + (e.llmP95Ms ?? 0), 0) / withLlm.length);
   return {
     window: win,
     entries,
@@ -887,9 +805,8 @@ app.get<{ Querystring: { window?: string } }>('/api/scans/series', async (req) =
       currentHigh: current,
       change30d: change,
       avgDurationMs: avgDuration,
-      // Avg LLM-verdict latency requires per-finding verdict events — not
-      // captured per persisted scan record yet, so return null for now.
-      avgVerdictMs: null,
+      avgVerdictMs,
+      avgP95Ms,
     },
   };
 });
@@ -906,6 +823,10 @@ app.post<{ Params: { scanId: string } }>('/api/scans/:scanId/cancel', async (req
   record.error = 'cancelled by user';
   record.finishedAt = Date.now();
   broadcast(scanId, { scanId, ts: Date.now(), state: 'error', error: 'cancelled by user' });
+  // If still queued, drop the starter so the slot promotes immediately.
+  // (The acquireScanSlot promise inside the scan flow stays pending; the
+  // outer flow short-circuits on the cancel flag before it ever runs.)
+  dropQueuedScan(scanId);
   return { ok: true };
 });
 
@@ -921,10 +842,12 @@ app.delete<{ Params: { scanId: string } }>('/api/scans/:scanId', async (req, rep
     return reply.code(409).send({ error: 'scan still running — cancel first' });
   }
   scans.delete(scanId);
-  const file = path.join(WORKSPACE_ROOT, '.rothunter', 'scans', `${scanId}.json`);
+  sseClients.delete(scanId);
+  const file = path.join(getWorkspaceRoot(), '.rothunter', 'scans', `${scanId}.json`);
   if (existsSync(file)) {
     await fs.unlink(file);
   }
+  scanHistoryCache.delete(getWorkspaceRoot());
   return { ok: true };
 });
 
@@ -940,9 +863,9 @@ app.delete<{ Params: { scanId: string } }>('/api/scans/:scanId', async (req, rep
  */
 app.post<{ Params: { fp: string } }>('/api/findings/:fp/false-positive', async (req) => {
   const fp = decodeURIComponent(req.params.fp);
-  const set = readFalsePositives(WORKSPACE_ROOT);
+  const set = readFalsePositives(getWorkspaceRoot());
   set.add(fp);
-  writeFalsePositives(WORKSPACE_ROOT, set);
+  await writeFalsePositives(getWorkspaceRoot(), set);
   // Apply retroactively to every in-memory scan so the UI updates
   // immediately without waiting for the next scan.
   for (const s of scans.values()) {
@@ -957,9 +880,9 @@ app.post<{ Params: { fp: string } }>('/api/findings/:fp/false-positive', async (
 
 app.delete<{ Params: { fp: string } }>('/api/findings/:fp/false-positive', async (req) => {
   const fp = decodeURIComponent(req.params.fp);
-  const set = readFalsePositives(WORKSPACE_ROOT);
+  const set = readFalsePositives(getWorkspaceRoot());
   set.delete(fp);
-  writeFalsePositives(WORKSPACE_ROOT, set);
+  await writeFalsePositives(getWorkspaceRoot(), set);
   for (const s of scans.values()) {
     if (!s.findings && !s.falsePositives) continue;
     const all = [...(s.findings ?? []), ...(s.falsePositives ?? [])];
@@ -971,22 +894,12 @@ app.delete<{ Params: { fp: string } }>('/api/findings/:fp/false-positive', async
 });
 
 app.get('/api/false-positives', async () => {
-  const set = readFalsePositives(WORKSPACE_ROOT);
+  const set = readFalsePositives(getWorkspaceRoot());
   return { fingerprints: [...set].sort() };
 });
 
-/**
- * GET /api/findings/:fp
- * Returns the finding + a code window around the first evidence range.
- * Looks up the finding in the in-memory scan cache; falls back to disk
- * lookup of the latest scan if the live scan has rotated out.
- */
-/**
- * GET /api/code-window?file=<rel>&line=<n>&end=<n?>&context=<n?>
- * Returns a CodeWindow around the requested file/line, with `context`
- * lines of padding above and below. Used to render evidence locations
- * other than the primary one shown in the finding detail.
- */
+// GET /api/code-window?file&line&end?&context? — CodeWindow with `context`
+// lines of padding for non-primary evidence locations.
 app.get<{
   Querystring: { file?: string; line?: string; end?: string; context?: string };
 }>('/api/code-window', async (req, reply) => {
@@ -999,8 +912,8 @@ app.get<{
   const ctx = Math.max(0, Math.min(60, Number(context ?? 6)));
   // Guard against path traversal — the resolved path must stay inside
   // the mounted workspace.
-  const resolved = path.resolve(WORKSPACE_ROOT, file);
-  if (!resolved.startsWith(path.resolve(WORKSPACE_ROOT) + path.sep)) {
+  const resolved = path.resolve(getWorkspaceRoot(), file);
+  if (!resolved.startsWith(path.resolve(getWorkspaceRoot()) + path.sep)) {
     return reply.code(400).send({ error: 'file is outside the workspace' });
   }
   if (!existsSync(resolved)) {
@@ -1033,7 +946,7 @@ app.get<{ Params: { fp: string }; Querystring: { context?: string } }>(
     }
     if (!finding) {
       // Fall back to most-recent persisted scan.
-      const history = await loadScanHistory(WORKSPACE_ROOT);
+      const history = await loadScanHistory(getWorkspaceRoot());
       for (const r of history) {
         if (!r.findings) continue;
         finding = r.findings.find((f) => f.fingerprint === fp);
@@ -1043,7 +956,7 @@ app.get<{ Params: { fp: string }; Querystring: { context?: string } }>(
     if (!finding) return reply.code(404).send({ error: 'finding not found' });
     const evidence = finding.evidence?.[0];
     if (!evidence) return { finding, codeWindow: null };
-    const filePath = path.join(WORKSPACE_ROOT, evidence.file);
+    const filePath = path.join(getWorkspaceRoot(), evidence.file);
     if (!existsSync(filePath)) return { finding, codeWindow: null };
     const fullText = await fs.readFile(filePath, 'utf-8');
     const lines = fullText.split(/\r?\n/);
@@ -1254,7 +1167,7 @@ async function loadLatestFindingsIndex(): Promise<Map<string, { h: number; m: nu
     }
   }
   if (!findings) {
-    const hist = await loadScanHistory(WORKSPACE_ROOT);
+    const hist = await loadScanHistory(getWorkspaceRoot());
     findings = hist.find((s) => s.findings && s.findings.length > 0)?.findings;
   }
   if (!findings) return out;
@@ -1285,4 +1198,7 @@ if (existsSync(UI_DIST)) {
 }
 
 await app.listen({ port: PORT, host: HOST });
-logger.info({ port: PORT, host: HOST, workspaceRoot: WORKSPACE_ROOT }, 'RotHunter server listening');
+logger.info(
+  { port: PORT, host: HOST, workspaceRoot: getWorkspaceRoot(), fsAllowRoots: FS_ALLOW_ROOTS },
+  'RotHunter server listening',
+);

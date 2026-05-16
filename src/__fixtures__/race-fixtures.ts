@@ -5,7 +5,7 @@
  * verdict (real race vs safe) lives in `race-golden.ts` and is matched by
  * the `enclosingName` field surfaced on the finding. The eval harness
  * scans this file, runs the deterministic race-condition detector, then
- * runs the LLM Tier-3 confirmer on each finding to compare against the
+ * runs the LLM confirmer on each finding to compare against the
  * expected verdict.
  *
  * DO NOT IMPORT FROM PRODUCTION CODE.
@@ -74,7 +74,8 @@ export class ParallelProcessor {
  */
 let eventBuffer: number[] = [];
 export function real_emitter_buffer(): void {
-  emitter.on('data', async (item: number) => {
+  emitter.on('data', async (...args: unknown[]) => {
+    const item = args[0] as number;
     const cur = eventBuffer;
     await flush(item);
     eventBuffer = [...cur, item];

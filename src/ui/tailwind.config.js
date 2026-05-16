@@ -8,20 +8,20 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg:          'rgb(var(--rh-bg) / <alpha-value>)',
-        panel:       'rgb(var(--rh-panel) / <alpha-value>)',
+        bg: 'rgb(var(--rh-bg) / <alpha-value>)',
+        panel: 'rgb(var(--rh-panel) / <alpha-value>)',
         'panel-alt': 'rgb(var(--rh-panel-alt) / <alpha-value>)',
-        border:      'rgb(var(--rh-border) / <alpha-value>)',
+        border: 'rgb(var(--rh-border) / <alpha-value>)',
         'border-soft': 'rgb(var(--rh-border-soft) / <alpha-value>)',
-        ink:         'rgb(var(--rh-ink) / <alpha-value>)',
-        muted:       'rgb(var(--rh-muted) / <alpha-value>)',
-        accent:      'rgb(var(--rh-accent) / <alpha-value>)',
+        ink: 'rgb(var(--rh-ink) / <alpha-value>)',
+        muted: 'rgb(var(--rh-muted) / <alpha-value>)',
+        accent: 'rgb(var(--rh-accent) / <alpha-value>)',
         'accent-soft': 'rgb(var(--rh-accent-soft) / <alpha-value>)',
         // Severity tones — shared across light + dark.
-        'high':      { DEFAULT: '#fb7185', soft: '#fda4af', wash: '#fecdd3' },
-        'med':       { DEFAULT: '#fbbf24', soft: '#fde68a', wash: '#fef3c7' },
-        'low':       { DEFAULT: '#34d399', soft: '#86efac', wash: '#d1fae5' },
-        'info':      { DEFAULT: '#38bdf8', soft: '#bae6fd', wash: '#e0f2fe' },
+        high: { DEFAULT: '#fb7185', soft: '#fda4af', wash: '#fecdd3' },
+        med: { DEFAULT: '#fbbf24', soft: '#fde68a', wash: '#fef3c7' },
+        low: { DEFAULT: '#34d399', soft: '#86efac', wash: '#d1fae5' },
+        info: { DEFAULT: '#38bdf8', soft: '#bae6fd', wash: '#e0f2fe' },
         // Back-compat aliases used by the v1 components — phased out as
         // pages are rewritten to the new token names.
         ce: 'rgb(var(--rh-ink) / <alpha-value>)',

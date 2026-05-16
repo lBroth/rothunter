@@ -5,20 +5,8 @@ export interface PublicAnyDetectorInput {
   symbols: ReadonlyArray<SymbolRecord>;
 }
 
-/**
- * Public-any detector.
- *
- * Flags `export`-ed function symbols whose signature contains `any` —
- * either a parameter typed `any` or a return type of `any`. Internal
- * `any`s inside the body are out of scope (the dup-type / strict-mode
- * detectors catch those at the project level).
- *
- * Public `any` is HIGH because it punches a hole in the public type
- * surface; every caller of that function inherits the unchecked type.
- *
- * Type-only `any[]`, `Record<string, any>`, `any | undefined` all count.
- * `unknown` does NOT trigger.
- */
+// Exported function with `any` in params or return. HIGH — caller-visible
+// type hole. `any[]`, `Record<string, any>`, `any | T` count. `unknown` doesn't.
 export function detectPublicAny(input: PublicAnyDetectorInput): Finding[] {
   const findings: Finding[] = [];
   for (const sym of input.symbols) {

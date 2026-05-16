@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react';
-import {
-  ChevronDown,
-  ChevronRight,
-  FileCode,
-  Folder,
-  FolderOpen,
-} from 'lucide-react';
+import type { JSX } from 'react';
+import { ChevronDown, ChevronRight, FileCode, Folder, FolderOpen } from 'lucide-react';
 import type {
   SymbolDetail,
   SymbolFileEntry,
@@ -62,7 +57,9 @@ export function Symbols(): JSX.Element {
         eyebrow="SYMBOL GRAPH · RESOLVED AT SCAN"
         title={
           <span>
-            <span className="text-ink tabular-nums">{stats.symbols.toLocaleString('en-US')} symbols</span>{' '}
+            <span className="text-ink tabular-nums">
+              {stats.symbols.toLocaleString('en-US')} symbols
+            </span>{' '}
             <span className="text-muted">· {stats.files.toLocaleString('en-US')} files</span>
           </span>
         }
@@ -99,9 +96,7 @@ export function Symbols(): JSX.Element {
             {fileResp && (
               <span className="text-xs text-muted font-mono whitespace-nowrap">
                 {fileResp.symbolCount} symbols
-                {fileResp.h > 0 && (
-                  <span className="text-high"> · {fileResp.h} HIGH</span>
-                )}
+                {fileResp.h > 0 && <span className="text-high"> · {fileResp.h} HIGH</span>}
               </span>
             )}
           </header>
@@ -207,7 +202,9 @@ function TreeBranch({ node, depth, activeFile, onSelect, query }: TreeBranchProp
           <FileCode size={12} className={active ? 'text-accent' : 'text-muted'} />
           <span className="flex-1 truncate">{node.name}</span>
           <CountChips h={node.h} m={node.m} l={node.l} small />
-          <span className="text-[10px] text-muted tabular-nums w-8 text-right">{node.symbolCount}</span>
+          <span className="text-[10px] text-muted tabular-nums w-8 text-right">
+            {node.symbolCount}
+          </span>
         </button>
       </li>
     );
@@ -221,11 +218,21 @@ function TreeBranch({ node, depth, activeFile, onSelect, query }: TreeBranchProp
         style={indent}
         className="w-full text-left flex items-center gap-2 py-1 text-xs font-mono text-ink hover:bg-bg pr-3"
       >
-        {open ? <ChevronDown size={11} className="text-muted" /> : <ChevronRight size={11} className="text-muted" />}
-        {open ? <FolderOpen size={12} className="text-muted" /> : <Folder size={12} className="text-muted" />}
+        {open ? (
+          <ChevronDown size={11} className="text-muted" />
+        ) : (
+          <ChevronRight size={11} className="text-muted" />
+        )}
+        {open ? (
+          <FolderOpen size={12} className="text-muted" />
+        ) : (
+          <Folder size={12} className="text-muted" />
+        )}
         <span className="flex-1 truncate">{node.name}</span>
         <CountChips h={node.h} m={node.m} l={node.l} small />
-        <span className="text-[10px] text-muted tabular-nums w-10 text-right">{node.symbolCount}</span>
+        <span className="text-[10px] text-muted tabular-nums w-10 text-right">
+          {node.symbolCount}
+        </span>
       </button>
       {open && (
         <ul>
@@ -245,7 +252,17 @@ function TreeBranch({ node, depth, activeFile, onSelect, query }: TreeBranchProp
   );
 }
 
-function CountChips({ h, m, l, small }: { h: number; m: number; l: number; small?: boolean }): JSX.Element {
+function CountChips({
+  h,
+  m,
+  l,
+  small,
+}: {
+  h: number;
+  m: number;
+  l: number;
+  small?: boolean;
+}): JSX.Element {
   const cls = small ? 'text-[10px]' : 'text-[11px]';
   return (
     <span className={'flex items-center gap-1 font-mono tabular-nums ' + cls}>
@@ -286,9 +303,7 @@ function SymbolRow({
       <td className="py-2 text-right font-mono text-[11px] text-muted tabular-nums">
         {symbol.line}
       </td>
-      <td className="py-2 text-right font-mono text-[11px] text-muted tabular-nums">
-        {symbol.in}
-      </td>
+      <td className="py-2 text-right font-mono text-[11px] text-muted tabular-nums">{symbol.in}</td>
       <td className="py-2 pr-4 text-right font-mono text-[11px] text-muted tabular-nums">
         {symbol.out}
       </td>
@@ -363,7 +378,9 @@ function SymbolDetailCard({
         </header>
         <ul className="divide-y divide-border-soft max-h-[28vh] overflow-y-auto">
           {detail.callees.length === 0 ? (
-            <li className="px-4 py-3 text-xs text-muted">This file imports nothing from within the workspace.</li>
+            <li className="px-4 py-3 text-xs text-muted">
+              This file imports nothing from within the workspace.
+            </li>
           ) : (
             detail.callees.map((c) => (
               <li key={c}>

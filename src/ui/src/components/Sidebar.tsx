@@ -1,5 +1,6 @@
+import type { JSX } from 'react';
 import type { Route } from '../lib/route.js';
-import { LogoMarkCompact } from './Logo.js';
+import { LogoMark } from './Logo.js';
 import {
   LayoutDashboard,
   ListChecks,
@@ -69,7 +70,7 @@ export function Sidebar({ route, onNavigate }: SidebarProps): JSX.Element {
         className="mb-4"
         title="RotHunter"
       >
-        <LogoMarkCompact size={28} />
+        <LogoMark size={36} />
       </button>
       {NAV.map((n) => {
         const Icon = n.icon;

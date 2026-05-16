@@ -56,6 +56,8 @@ export interface SymbolRecord {
   range: SourceRange;
   source: string;
   exported: boolean;
+  /** True iff the symbol is the file's default export (`export default X`). */
+  isDefault?: boolean;
   structure?: AnyStructure;
 
   // Filled by the normalizer
@@ -90,6 +92,14 @@ export interface Finding {
   evidence: Evidence[];
   suggestion?: string;
   fingerprint: string;
+  /**
+   * Unix-ms timestamp when this finding was confirmed resolved by a
+   * single-finding re-run (POST /api/findings/:fp/rerun). The persisted
+   * scan record keeps the entry around — flipped to `resolved` instead
+   * of deleted — so History / Findings views can surface the fix as a
+   * "completed" item rather than silently dropping it.
+   */
+  resolvedAt?: number;
 }
 
 export interface Detector {

@@ -11,22 +11,8 @@ export interface DeepNestingDetectorInput {
   highThreshold?: number;
 }
 
-/**
- * Deep-nesting detector.
- *
- * Walks the source of each parsed function and tracks the maximum
- * nesting depth of `if`, `for`, `while`, `try`, `switch` blocks. Depth
- * is measured by counting opening keywords minus closing braces in a
- * single-pass scanner — fast, regex-based, no full AST cost.
- *
- * Defaults:
- *   - LOW  ≥ 4 deep
- *   - MED  ≥ 5 deep
- *   - HIGH ≥ 6 deep
- *
- * The arrow-of-doom is a classic signal that the function wants to be
- * inverted (early returns), table-driven, or split.
- */
+// Max if/for/while/try/switch depth per function via regex single-pass.
+// LOW ≥4, MED ≥5, HIGH ≥6.
 export function detectDeepNesting(input: DeepNestingDetectorInput): Finding[] {
   const low = input.lowThreshold ?? 4;
   const med = input.medThreshold ?? 5;

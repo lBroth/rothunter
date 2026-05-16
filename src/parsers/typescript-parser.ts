@@ -3,10 +3,12 @@ import * as path from 'node:path';
 import {
   Project,
   SyntaxKind,
+  type ArrowFunction,
   type CallSignatureDeclaration,
   type ClassDeclaration,
   type ConstructSignatureDeclaration,
   type FunctionDeclaration,
+  type FunctionExpression,
   type IndexSignatureDeclaration,
   type InterfaceDeclaration,
   type MethodDeclaration,
@@ -15,6 +17,7 @@ import {
   type PropertySignature,
   type TypeAliasDeclaration,
   type TypeLiteralNode,
+  type VariableDeclaration,
 } from 'ts-morph';
 import { logger } from '../utils/logger.js';
 import { resolveImport, type ImportRecord } from '../graph/import-graph.js';
@@ -152,8 +155,9 @@ export class TypeScriptParser {
         if (call.getExpression().getKind() !== SyntaxKind.ImportKeyword) continue;
         const [argNode] = call.getArguments();
         if (!argNode) continue;
-        if (argNode.getKind() !== SyntaxKind.StringLiteral) continue;
-        const specifier = (argNode as { getLiteralText(): string }).getLiteralText();
+        const stringArg = argNode.asKind(SyntaxKind.StringLiteral);
+        if (!stringArg) continue;
+        const specifier = stringArg.getLiteralText();
         imports.push({
           source: relativeFile,
           specifier,
@@ -171,6 +175,14 @@ export class TypeScriptParser {
       'TypeScript parser: workspace scanned',
     );
     return { symbols: records, imports, files };
+  }
+
+  private isDefault(node: { isDefaultExport?: () => boolean }): boolean {
+    try {
+      return node.isDefaultExport?.() ?? false;
+    } catch {
+      return false;
+    }
   }
 
   private fromInterface(iface: InterfaceDeclaration, file: string): SymbolRecord {
@@ -193,6 +205,7 @@ export class TypeScriptParser {
       range: { startLine, endLine },
       source,
       exported: iface.isExported(),
+      isDefault: this.isDefault(iface),
       structure,
     };
   }
@@ -232,6 +245,7 @@ export class TypeScriptParser {
       range: { startLine, endLine },
       source,
       exported: alias.isExported(),
+      isDefault: this.isDefault(alias),
       structure,
     };
   }
@@ -272,6 +286,7 @@ export class TypeScriptParser {
       range: { startLine, endLine },
       source,
       exported: cls.isExported(),
+      isDefault: this.isDefault(cls),
       structure,
     };
   }
@@ -313,38 +328,21 @@ export class TypeScriptParser {
    * Returns null when the initializer is not a callable shape.
    */
   private fromVariableFunction(
-    decl: { getName(): string; getInitializer(): unknown; getNameNode(): { getKind(): number } },
+    decl: VariableDeclaration,
     isExported: boolean,
     file: string,
   ): SymbolRecord | null {
-    if ((decl.getNameNode() as { getKind(): number }).getKind() !== SyntaxKind.Identifier) {
+    if (decl.getNameNode().getKind() !== SyntaxKind.Identifier) {
       return null;
     }
-    const init = decl.getInitializer() as
-      | undefined
-      | (FunctionDeclaration & { getKind(): number; getBody?: () => unknown });
+    const init = decl.getInitializer();
     if (!init) return null;
-    const initKind = (init as { getKind(): number }).getKind();
-    if (initKind !== SyntaxKind.ArrowFunction && initKind !== SyntaxKind.FunctionExpression) {
-      return null;
-    }
+    const fnLike: ArrowFunction | FunctionExpression | undefined =
+      init.asKind(SyntaxKind.ArrowFunction) ?? init.asKind(SyntaxKind.FunctionExpression);
+    if (!fnLike) return null;
 
-    const body = (init as { getBody?: () => unknown }).getBody?.();
+    const body = fnLike.getBody();
     if (!body) return null;
-
-    const fnLike = init as unknown as {
-      getParameters(): Array<{
-        getName(): string;
-        getTypeNode(): { getText(): string } | undefined;
-        getType(): { getText(): string };
-        isOptional(): boolean;
-        hasInitializer(): boolean;
-        isReadonly(): boolean;
-      }>;
-      getReturnType(): { getText(): string };
-      isAsync(): boolean;
-      isGenerator?: () => boolean;
-    };
 
     const params: FieldStructure[] = fnLike.getParameters().map((p) => ({
       name: p.getName(),
@@ -353,8 +351,7 @@ export class TypeScriptParser {
       readonly: p.isReadonly(),
     }));
     const returnType = normalizeTypeText(fnLike.getReturnType().getText());
-    const bodyNode = body as { getText(): string };
-    const bodyText = bodyNode.getText();
+    const bodyText = body.getText();
     const bodyNormalized = collapseSource(bodyText);
     const bodyShingles = computeShingles(bodyNormalized);
 
@@ -363,20 +360,15 @@ export class TypeScriptParser {
       params,
       returnType,
       async: fnLike.isAsync(),
-      generator: fnLike.isGenerator?.() ?? false,
+      generator: fnLike.isKind(SyntaxKind.FunctionExpression) ? fnLike.isGenerator() : false,
       body: bodyText,
       bodyNormalized,
       bodyShingles,
     };
 
-    const wholeDecl = decl as unknown as {
-      getStartLineNumber(): number;
-      getEndLineNumber(): number;
-      getText(): string;
-    };
-    const source = wholeDecl.getText();
-    const startLine = wholeDecl.getStartLineNumber();
-    const endLine = wholeDecl.getEndLineNumber();
+    const source = decl.getText();
+    const startLine = decl.getStartLineNumber();
+    const endLine = decl.getEndLineNumber();
     return {
       id: hashContent(file, startLine, source),
       kind: 'function',
@@ -428,6 +420,7 @@ export class TypeScriptParser {
       range: { startLine, endLine },
       source,
       exported: fn.isExported(),
+      isDefault: this.isDefault(fn),
       structure,
     };
   }

@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 /**
  * Shared chip primitives used across the dashboard, findings list,
  * finding detail, and verdict stream.
@@ -42,8 +43,6 @@ export function ClusterPill({ name, max = 24 }: ClusterPillProps): JSX.Element {
 
 export function MetaCode({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <code className="font-mono text-[11px] text-muted bg-bg px-1 py-px rounded-sm">
-      {children}
-    </code>
+    <code className="font-mono text-[11px] text-muted bg-bg px-1 py-px rounded-sm">{children}</code>
   );
 }

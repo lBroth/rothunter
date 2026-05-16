@@ -2,34 +2,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { WorkspaceConfig } from '../config.js';
 
-/**
- * Auto-detect a monorepo's workspace layout from `package.json` /
- * `pnpm-workspace.yaml` / `nx.json` / `turbo.json` / Rush config.
- *
- * Behaviour:
- *   - Reads `<root>/package.json#workspaces` — this field is the SAME for:
- *       * npm 7+        (array form or `workspaces: { packages: [...] }`)
- *       * yarn classic
- *       * yarn berry
- *       * Bun
- *     Anyone using `package.json#workspaces` is auto-detected; the package
- *     manager is irrelevant to us.
- *   - Reads `<root>/pnpm-workspace.yaml` (key `packages:`) — pnpm's variant.
- *   - Reads `<root>/nx.json#workspaceLayout` (libs/apps roots).
- *   - Turbo and Lerna both lean on the `package.json#workspaces` field above,
- *     so they're picked up via that path with no extra code.
- *   - Expands simple glob patterns (`packages/*`, `apps/*`) into concrete dirs.
- *
- * Output: a list of WorkspaceConfig entries the RotHunter multi-workspace
- * pipeline can ingest without requiring an explicit `rothunter.config.json`.
- *
- * Documented limitations:
- *   - Globs more exotic than `dir/*` are not expanded (we don't ship a glob
- *     library; complex patterns mean the user should write an explicit
- *     `rothunter.config.json`).
- *   - Rush's monorepo config (`rush.json` projects array) is recognised in
- *     a v0.2.
- */
+// Auto-detect monorepo layout from package.json#workspaces (npm/yarn/bun/
+// turbo/lerna), pnpm-workspace.yaml, nx.json#workspaceLayout. Simple globs
+// (dir/*) only — complex patterns require explicit rothunter.config.json.
 export function discoverMonorepoWorkspaces(repoRoot: string): WorkspaceConfig[] | null {
   const dirs = new Set<string>();
 

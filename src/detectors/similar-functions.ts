@@ -17,35 +17,9 @@ export interface SimilarFunctionsDetectorInput {
   maxFindings?: number;
 }
 
-/**
- * Similar-functions detector — clusters candidates for "we have N
- * variants of the same thing, deduplicate into a shared package".
- *
- * Generalises `duplicate-function` (body-hash equality) and the original
- * `same-name-evolution` (string-equal name + git-date gap). Two
- * functions are considered similar when the **combined** similarity of:
- *
- *   - their tokenised names         (camelCase / snake / kebab split, stop-words dropped)
- *   - their body-shingle Jaccard    (already computed by the parser)
- *
- * exceeds `similarityThreshold`. Pairs above the threshold are merged
- * via union-find into clusters; each cluster gets one MED finding with
- * every member cited, plus a "canonical" pick driven by:
- *
- *   1. most-recently touched copy (via `git log -1 --format=%ct`)
- *   2. tie-break: largest body / most params (a heuristic for "richest"
- *      implementation).
- *
- * Suggestion text includes a concrete npm-package proposal when the
- * cluster spans ≥3 files or ≥2 distinct top-level directories — the
- * canonical "this wants to live in a shared lib" signal.
- *
- * Compared to `duplicate-function`, this detector fires when the bodies
- * have already diverged (so the hash check fails) but the intent is
- * clearly the same. Compared to `same-name-evolution`, it doesn't need
- * the names to be byte-equal: `getDbConnection` and `databaseConnection`
- * cluster together as long as their body shingles agree.
- */
+// Cluster functions by combined (name-token Jaccard, body-shingle Jaccard) ≥
+// threshold via union-find. Canonical pick: newest commit, then largest body
+// / most params. Cross-dir clusters get an npm-package suggestion. MED.
 export function detectSimilarFunctions(input: SimilarFunctionsDetectorInput): Finding[] {
   const threshold = input.similarityThreshold ?? 0.5;
   const nameWeight = clamp01(input.nameWeight ?? 0.4);
@@ -73,20 +47,58 @@ export function detectSimilarFunctions(input: SimilarFunctionsDetectorInput): Fi
   // pair — surfaces the "why" string for the finding.
   const reasons = new Map<string, { score: number; nameSim: number; bodySim: number; i: number; j: number }>();
 
-  for (let i = 0; i < candidates.length; i++) {
-    for (let j = i + 1; j < candidates.length; j++) {
-      const a = candidates[i]!;
-      const b = candidates[j]!;
-      const nameSim = jaccard(a.nameTokens, b.nameTokens);
-      const bodySim = jaccard(a.fn.bodyShingles, b.fn.bodyShingles);
-      const score = nameWeight * nameSim + bodyWeight * bodySim;
-      if (score < threshold) continue;
-      uf.union(i, j);
-      // After union, keep the strongest edge encountered for each root.
-      const root = uf.find(i);
-      const cached = reasons.get(String(root));
-      if (!cached || score > cached.score) {
-        reasons.set(String(root), { score, nameSim, bodySim, i, j });
+  // Two regimes:
+  //   - n < BUCKET_THRESHOLD: full pairwise (O(n²)) — small enough to be
+  //     cheap, and catches body-similar / name-disjoint pairs.
+  //   - n >= BUCKET_THRESHOLD: bucket by name token first, only compare
+  //     pairs that share at least one token. Skips body-only matches but
+  //     prevents O(n²) blow-up on big workspaces.
+  const BUCKET_THRESHOLD = 200;
+  const consider = (i: number, j: number): void => {
+    const a = candidates[i]!;
+    const b = candidates[j]!;
+    const nameSim = jaccard(a.nameTokens, b.nameTokens);
+    const bodySim = jaccard(a.fn.bodyShingles, b.fn.bodyShingles);
+    const score = nameWeight * nameSim + bodyWeight * bodySim;
+    if (score < threshold) return;
+    uf.union(i, j);
+    const root = uf.find(i);
+    const cached = reasons.get(String(root));
+    if (!cached || score > cached.score) {
+      reasons.set(String(root), { score, nameSim, bodySim, i, j });
+    }
+  };
+
+  if (candidates.length < BUCKET_THRESHOLD) {
+    for (let i = 0; i < candidates.length; i++) {
+      for (let j = i + 1; j < candidates.length; j++) consider(i, j);
+    }
+  } else {
+    const buckets = new Map<string, number[]>();
+    for (let i = 0; i < candidates.length; i++) {
+      for (const tok of candidates[i]!.nameTokens) {
+        const list = buckets.get(tok) ?? [];
+        list.push(i);
+        buckets.set(tok, list);
+      }
+    }
+    const seenPairs = new Set<number>();
+    const pairKey = (i: number, j: number): number => {
+      const lo = Math.min(i, j);
+      const hi = Math.max(i, j);
+      return lo * candidates.length + hi;
+    };
+    for (const list of buckets.values()) {
+      if (list.length < 2) continue;
+      for (let ai = 0; ai < list.length; ai++) {
+        for (let bi = ai + 1; bi < list.length; bi++) {
+          const i = list[ai]!;
+          const j = list[bi]!;
+          const key = pairKey(i, j);
+          if (seenPairs.has(key)) continue;
+          seenPairs.add(key);
+          consider(i, j);
+        }
       }
     }
   }

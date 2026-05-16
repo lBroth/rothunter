@@ -9,23 +9,9 @@ export interface DeadApiDetectorInput {
   imports: ReadonlyArray<ImportRecord>;
 }
 
-/**
- * Cross-workspace dead-API detector.
- *
- * A symbol exported from workspace A is a dead-API candidate when:
- *   - It has `exported: true`,
- *   - No file in any OTHER workspace imports its name from a target inside A,
- *   - No other workspace imports A's package namespace (`import * as X from '@org/a'`).
- *
- * Within-workspace usage is intentionally ignored: a function exported for
- * cross-package consumption that is only used internally is the entire point
- * of this detector. The intra-workspace dead-export detector already handles
- * "exported but not used at all".
- *
- * Severity defaults to `low` because public-API symbols may be consumed by
- * external dependents not part of the scanned group; the human dashboard
- * (or `.rothunterignore`) is the canonical place to suppress those.
- */
+// Cross-workspace dead-API: exported symbol with no consumer in any
+// OTHER workspace. Intra-workspace use intentionally ignored (dead-export
+// covers that). Severity low — external dependents are invisible.
 export function detectDeadApis(input: DeadApiDetectorInput): Finding[] {
   // Per-target consumed name sets across workspace boundaries.
   const crossConsumed = new Map<string, Set<string>>();

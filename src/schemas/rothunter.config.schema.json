@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rothunter.dev/schemas/rothunter.config.schema.json",
+  "title": "RotHunter multi-workspace configuration",
+  "description": "Configuration file consumed by rothunter when scanning a group of linked workspaces. Drop this in the root workspace and rothunter will treat the listed siblings as a single logical project for the cross-repo detectors (dead-api, duplicate-type, …).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workspaces"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Pointer to this JSON Schema. Enables autocomplete + validation in IDEs that support JSON Schema (VS Code, JetBrains, Sublime LSP).",
+      "format": "uri"
+    },
+    "workspaces": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Linked workspaces. Each entry points at a sibling directory on disk and is treated as a member of the same logical project.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "name"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Filesystem path to the workspace. Relative paths are resolved against the directory containing this config file. Absolute paths are accepted."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable logical identifier (e.g. 'backend', 'frontend'). Used as a path prefix in findings + fingerprints; must be unique within the config."
+          },
+          "package": {
+            "type": "string",
+            "description": "Optional npm-style package name. When set, bare-specifier imports matching this package (e.g. import { X } from '@org/backend') are resolved into this workspace's source tree, allowing cross-workspace dead-export / dead-api detection. If omitted, falls back to the workspace's package.json#name."
+          }
+        }
+      }
+    }
+  }
+}

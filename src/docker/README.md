@@ -4,11 +4,11 @@ Single command brings up the web UI + scan engine + local LLM sidecar:
 
 ```bash
 # Start (current dir is the workspace under scan).
-docker compose -f src/rothunter/docker/docker-compose.yml up --build
+docker compose -f src/docker/docker-compose.yml up --build
 
 # Scan a specific repo:
 ROTHUNTER_WORKSPACE_HOST=/path/to/your/repo \
-  docker compose -f src/rothunter/docker/docker-compose.yml up --build
+  docker compose -f src/docker/docker-compose.yml up --build
 ```
 
 Open <http://localhost:3000>.
@@ -49,10 +49,6 @@ vs ~1.5 s on GPU).
 ## Dev mode (no Docker)
 
 ```bash
-# Terminal A — server
-npm run build
-ROTHUNTER_WORKSPACE=$(pwd) node dist/rothunter/server/index.js
-
-# Terminal B — UI with HMR (proxies /api to localhost:3000)
-cd src/rothunter/ui && npm install && npm run dev
+# Both server + UI with HMR
+npm run dev
 ```

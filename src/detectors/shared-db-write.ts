@@ -12,6 +12,8 @@ import type { Finding } from '../types.js';
 export interface SharedDbWriteDetectorInput {
   workspaceRoot: string;
   files: ReadonlyArray<string>;
+  /** Optional pre-built ts-morph Project — saves a parse per file. */
+  project?: Project;
 }
 
 interface WriteCall {
@@ -29,53 +31,23 @@ interface WriteCall {
   enclosingSource: string;
 }
 
-/**
- * Cross-flow / cross-repo distributed-race surface — shared DB column writes.
- *
- * Walks every workspace .ts file looking for ORM/SQL-builder write calls and
- * indexes the `(entity, column)` tuples each one writes. When two or more
- * distinct files write the same column, the detector emits a "shared DB
- * column write" finding — high-signal review surface for the lost-update
- * class of distributed bugs (HTTP handler + worker, two webhook handlers,
- * parallel queue consumers, two services in a multi-workspace group).
- *
- * Recognised ORM/SQL families today (best-effort static patterns; no type
- * resolution, so some FPs on non-ORM `.update({...})` chains are expected
- * and intentionally accepted — the cluster + LLM Tier-3 step filters them):
- *
- *   - Prisma     prisma.<model>.update / upsert / create / createMany / updateMany
- *   - Sequelize  <Model>.update / upsert / create / bulkCreate — requires a
- *                Sequelize-shaped options arg (`where` / `transaction` /
- *                `returning` / …) to dodge non-ORM factory FPs.
- *   - TypeORM    <repoIdent>.update(<id>, { <col>: ... })
- *                <repoIdent>.save({ id, <col>: ... })
- *                getRepository(E).update(<id>, { <col>: ... })
- *   - Mongoose   Model.updateOne / updateMany / findOneAndUpdate / replaceOne
- *                Accepts `{ <col>: ... }` or `{ $set: { <col>: ... } }`;
- *                Mongo operator keys (`$inc`, `$pull`, …) are stripped.
- *   - Knex       knex('t').update({...}) / knex('t').where(...).update(...)
- *                knex('t').insert({...}) / knex.from('t').update(...)
- *   - Drizzle    db.update(<tableSym>).set({...})
- *                db.insert(<tableSym>).values({...} | [{...}, ...])
- *   - Raw SQL    knex.raw / pg.query / client.query / prisma.$executeRaw[Unsafe]
- *                UPDATE / INSERT INTO shapes — narrow regex grammar.
- *
- * Deferred (require flow analysis):
- *   - instance-style writes (`doc.field = X; await doc.save()`)
- *   - Prisma relation writes (connect/disconnect/set), nested data writes,
- *     `$transaction([...])` column tracking.
- *
- * Output severity 'medium', confidence 0.7. Findings include up to 8 call
- * sites with their enclosing function source, so the LLM Tier-3 layer can
- * decide whether the call sites can actually fire concurrently.
- */
+// Cross-flow DB write detector. Indexes (entity, column) tuples for ORM /
+// SQL-builder writes (Prisma, Sequelize, TypeORM, Mongoose, Knex, Drizzle,
+// raw SQL). Clusters with ≥2 caller files become findings. MED, 0.7 — LLM
+// LLM filters trivial cases. Instance-style writes + Prisma relation
+// writes deferred (need flow analysis).
 export function detectSharedDbWrites(input: SharedDbWriteDetectorInput): Finding[] {
-  const project = new Project({
-    skipAddingFilesFromTsConfig: true,
-    skipFileDependencyResolution: true,
-  });
-  for (const rel of input.files) {
-    project.addSourceFileAtPathIfExists(path.join(input.workspaceRoot, rel));
+  let project: Project;
+  if (input.project) {
+    project = input.project;
+  } else {
+    project = new Project({
+      skipAddingFilesFromTsConfig: true,
+      skipFileDependencyResolution: true,
+    });
+    for (const rel of input.files) {
+      project.addSourceFileAtPathIfExists(path.join(input.workspaceRoot, rel));
+    }
   }
 
   const writes: WriteCall[] = [];
@@ -234,19 +206,8 @@ function matchPrisma(call: CallExpression): AdapterMatch | null {
 
 // ---------- Sequelize -----------------------------------------------------
 
-/**
- * Sequelize patterns:
- *   - <Model>.update({ <cols> }, { where: ... })
- *   - <Model>.upsert({ <cols> })
- *   - <Model>.create({ <cols> })
- *   - <Model>.bulkCreate([{ <cols> }, ...])
- *   - <instance>.update({ <cols> })
- *
- * Sequelize models are typically PascalCase identifiers (User, Order). We
- * accept any identifier and rely on the cluster step + LLM verdict to
- * filter — false positives on `someObject.update({...})` non-ORM calls are
- * possible but acceptable.
- */
+// Sequelize: Model.update/upsert/create/bulkCreate + instance.update.
+// Identifier head — non-ORM FPs filtered by cluster + LLM.
 /**
  * Suffix blacklist for the Sequelize PascalCase heuristic. Real-world
  * codebases use `<Something>.create({...})` heavily for factories (JWT
@@ -373,15 +334,14 @@ function matchTypeOrm(call: CallExpression): AdapterMatch | null {
     if (m) entity = m[1]!;
     else if (/^repository$/i.test(name)) entity = name;
     else return null;
-  } else if (head.getKind() === SyntaxKind.CallExpression) {
-    const inner = head as { getExpression(): Node; getArguments(): Node[] };
+  } else {
+    const inner = head.asKind(SyntaxKind.CallExpression);
+    if (!inner) return null;
     const innerName = inner.getExpression().getText();
     if (!/(^|\.)getRepository$|getMongoRepository$|getCustomRepository$/.test(innerName)) return null;
     const innerArgs = inner.getArguments();
     if (innerArgs.length === 0 || innerArgs[0]!.getKind() !== SyntaxKind.Identifier) return null;
     entity = innerArgs[0]!.getText();
-  } else {
-    return null;
   }
   if (!entity) return null;
 
@@ -422,19 +382,8 @@ const MONGOOSE_ARGS1_METHODS = new Set([
 ]);
 const MONGOOSE_ARGS0_METHODS = new Set(['create', 'insertMany']);
 
-/**
- * Mongoose:
- *   - Model.updateOne(filter, { <cols> } | { $set: { <cols> } })
- *   - Model.findByIdAndUpdate(id, { <cols> } | { $set: { <cols> } })
- *   - Model.create({ <cols> }) / .create([{...}, ...])
- *   - Model.insertMany([{ <cols> }, ...])
- *   - this.<id>Model.<method>(...)
- *
- * Receiver can be: PascalCase identifier (model class), camelCase ending in
- * `Model` (strip suffix), or `this.<id>Model` property access (NestJS).
- * `$set` block is unwrapped if present; bare-update shape is supported too,
- * with Mongo operator keys (`$inc`, `$pull`, …) stripped.
- */
+// Mongoose updateOne/findOneAndUpdate/create/insertMany. Receiver: Pascal
+// ident, camel-Model, or this.<id>Model. $set unwrapped, $-ops stripped.
 function matchMongoose(call: CallExpression): AdapterMatch | null {
   const callee = call.getExpression();
   if (callee.getKind() !== SyntaxKind.PropertyAccessExpression) return null;
@@ -514,16 +463,8 @@ function resolveMongooseEntity(head: Node): string | null {
 
 // ---------- Knex ---------------------------------------------------------
 
-/**
- * Knex:
- *   - knex('t').update({ <cols> })  /  knex.from('t').update(...)
- *   - db('t').where(...).update({ <cols> })
- *   - knex('t').insert({ <cols> })
- *
- * The chain is walked back to find the original `knex('table')` /
- * `db('table')` / `.from('table')` / `.into('table')` call; the string
- * literal there is the table name.
- */
+// Knex update/insert. Walks back through the chain to the
+// knex('t')/db('t')/.from('t')/.into('t') head for the table name.
 function matchKnex(call: CallExpression): AdapterMatch | null {
   const callee = call.getExpression();
   if (callee.getKind() !== SyntaxKind.PropertyAccessExpression) return null;
@@ -557,7 +498,8 @@ function findKnexTable(node: Node): string | null {
           (first.getKind() === SyntaxKind.StringLiteral ||
             first.getKind() === SyntaxKind.NoSubstitutionTemplateLiteral)
         ) {
-          return (first as { getLiteralText(): string }).getLiteralText();
+          const lit = first.asKind(SyntaxKind.StringLiteral) ?? first.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
+          if (lit) return lit.getLiteralText();
         }
       }
     }
@@ -568,16 +510,7 @@ function findKnexTable(node: Node): string | null {
 
 // ---------- Drizzle ------------------------------------------------------
 
-/**
- * Drizzle:
- *   - db.update(<tableSym>).set({ <cols> }).where(...)
- *   - db.insert(<tableSym>).values({ <cols> })
- *   - db.insert(<tableSym>).values([{ <cols> }, ...])
- *
- * The table identifier (`usersTable`) is used as-is; the cluster pipeline
- * tolerates a small amount of cross-codebase variation in table-symbol
- * naming.
- */
+// Drizzle: db.update(t).set({...}) and db.insert(t).values({...}|[...]).
 function matchDrizzle(call: CallExpression): AdapterMatch | null {
   const callee = call.getExpression();
   if (callee.getKind() !== SyntaxKind.PropertyAccessExpression) return null;
@@ -621,19 +554,8 @@ function matchDrizzle(call: CallExpression): AdapterMatch | null {
 
 // ---------- Raw SQL ------------------------------------------------------
 
-/**
- * Recognised raw-SQL surfaces:
- *   - knex.raw('UPDATE users SET email = ?', [...])
- *   - pg.query('UPDATE users SET email = $1', [...])
- *   - client.query('INSERT INTO users (email) VALUES ($1)', [...])
- *   - prisma.$executeRaw`UPDATE users SET email = ${x}`
- *   - prisma.$executeRawUnsafe('UPDATE users SET email = ?')
- *
- * We parse the first SQL-string argument (or template-tagged literal) with
- * a tiny regex grammar that supports UPDATE/INSERT shapes. The goal is
- * "spot the lost-update surface", not a SQL parser — comments + complex
- * subqueries fall through harmlessly.
- */
+// Raw SQL: .raw / .query / .$executeRaw[Unsafe] on UPDATE/INSERT shapes.
+// Tiny regex grammar, not a SQL parser — comments + subqueries fall through.
 function matchRawSql(call: CallExpression): AdapterMatch | null {
   const callee = call.getExpression();
 
@@ -648,13 +570,11 @@ function matchRawSql(call: CallExpression): AdapterMatch | null {
     }
     const [first] = call.getArguments();
     if (!first) return null;
-    if (
-      first.getKind() === SyntaxKind.StringLiteral ||
-      first.getKind() === SyntaxKind.NoSubstitutionTemplateLiteral
-    ) {
-      sqlText = (first as { getLiteralText(): string }).getLiteralText();
+    const stringLit = first.asKind(SyntaxKind.StringLiteral) ?? first.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
+    if (stringLit) {
+      sqlText = stringLit.getLiteralText();
     } else if (first.getKind() === SyntaxKind.TemplateExpression) {
-      sqlText = (first as { getText(): string }).getText();
+      sqlText = first.getText();
     }
   }
 

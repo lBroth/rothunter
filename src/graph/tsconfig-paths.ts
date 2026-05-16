@@ -1,26 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-/**
- * TypeScript `paths` / `baseUrl` resolver.
- *
- * Reads the workspace's `tsconfig.json` (or `jsconfig.json`) and exposes a
- * `resolveAlias()` function that maps a bare specifier like `@/foo/bar` to a
- * concrete file path on disk. Used by the import graph so detectors stop
- * false-positiving on monorepos and apps that map `@/`, `~`, `@app/`, etc.
- *
- * Supports:
- *   - `compilerOptions.baseUrl` (file paths relative to)
- *   - `compilerOptions.paths` with single-target and wildcard mappings
- *     (`"@/*": ["src/*"]`, `"@org/lib": ["packages/lib/src/index.ts"]`)
- *   - `extends`: follows one level of `extends` and merges parent paths
- *     (multi-level is documented limitation, rare in practice)
- *
- * Not supported (documented):
- *   - `project references` traversal (each referenced tsconfig)
- *   - JSON-with-comments outside of standard `// + /* * /` shapes
- *   - `tsc --moduleResolution bundler` exact behaviour
- */
+// tsconfig.json paths/baseUrl resolver. Maps `@/foo`/`~`/`@org/lib` aliases
+// to disk. Follows one level of `extends`. Project references + bundler
+// resolution not modelled.
 export interface TsconfigPaths {
   /** Absolute base directory derived from baseUrl, or workspaceRoot. */
   baseDir: string;
@@ -41,12 +24,14 @@ export function loadTsconfigPaths(workspaceRoot: string): TsconfigPaths | null {
   for (const candidate of CONFIG_CANDIDATES) {
     const abs = path.join(workspaceRoot, candidate);
     if (!fs.existsSync(abs)) continue;
-    const merged = readMergedConfig(abs);
+    const merged = readMergedConfig(abs, new Set());
     if (!merged) continue;
     return compileMappings(abs, merged, workspaceRoot);
   }
   return null;
 }
+
+const MAX_EXTENDS_DEPTH = 8;
 
 interface RawConfig {
   extends?: string;
@@ -56,13 +41,25 @@ interface RawConfig {
   };
 }
 
-function readMergedConfig(configPath: string): RawConfig | null {
+function readMergedConfig(configPath: string, visited: Set<string>): RawConfig | null {
+  // Cycle guard: `visited` tracks the realpath of every config seen on the
+  // extends chain. A self-extending or A→B→A loop returns null instead of
+  // recursing forever. Depth cap is a belt-and-braces for pathological
+  // chains the cycle guard didn't catch (e.g. each step is a distinct
+  // file but the chain length is still adversarial).
+  const realPath = (() => {
+    try { return fs.realpathSync(configPath); } catch { return configPath; }
+  })();
+  if (visited.has(realPath)) return null;
+  if (visited.size >= MAX_EXTENDS_DEPTH) return null;
+  visited.add(realPath);
+
   const raw = readJsonWithComments(configPath);
   if (!raw) return null;
   if (typeof raw.extends === 'string') {
     const parentPath = resolveExtends(configPath, raw.extends);
     if (parentPath && fs.existsSync(parentPath)) {
-      const parent = readMergedConfig(parentPath);
+      const parent = readMergedConfig(parentPath, visited);
       if (parent) {
         return {
           extends: raw.extends,

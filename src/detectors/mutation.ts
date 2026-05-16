@@ -14,6 +14,8 @@ import type { Finding, Severity } from '../types.js';
 export interface MutationDetectorInput {
   workspaceRoot: string;
   files: ReadonlyArray<string>;
+  /** Optional pre-built ts-morph Project — saves a parse per file. */
+  project?: Project;
 }
 
 type MutationPattern =
@@ -36,9 +38,9 @@ interface RawCandidate {
   method?: string;
   snippet: string;
   source: string;
-  /** Surrounding function/method source — used by the LLM Tier-3 confirmer. */
+  /** Surrounding function/method source — used by the LLM confirmer. */
   enclosingSource: string;
-  /** Function or method name, when known — used by the LLM Tier-3 confirmer. */
+  /** Function or method name, when known — used by the LLM confirmer. */
   enclosingName?: string;
 }
 
@@ -75,37 +77,22 @@ const ASSIGNMENT_OPERATORS = new Set([
 
 const IGNORE_ANNOTATION = 'rothunter:ignore-mutation';
 
-/**
- * Tier-1 deterministic mutation detector.
- *
- * Flags four pattern classes when applied to a function/method parameter
- * whose type is NOT `Readonly<...>` or `ReadonlyArray<...>`:
- *
- *  - Array-mutator method call:    `arg.push(...)`, `arg.splice(...)`, etc.
- *  - Object.assign as target:      `Object.assign(arg, src)`
- *  - delete on a property:         `delete arg.prop`
- *  - Property assignment:          `arg.prop = x`, `arg.prop += x`, etc.
- *
- * Class-method `this.x = y` and constructor self-initialisation are skipped
- * (almost always intentional). Mutations of a local variable initialised from
- * a parameter (`const copy = arg; copy.x = 1;`) are NOT flagged here — that
- * requires escape analysis (Phase E v0.2).
- *
- * False-positive control:
- *   - Inline annotation `// rothunter:ignore-mutation` on the same or previous
- *     line suppresses the finding.
- *   - Severity `medium` by default; confidence 0.7. The LLM Tier-3 layer is
- *     not yet wired for this detector (a follow-up prompt design is required).
- *   - Tracks only parameter mutations; module-scope `let`/`var` mutation is
- *     Phase E v0.2.
- */
+// Parameter-mutation detector. Flags array-mutators, Object.assign target,
+// delete, property assignment on params NOT typed Readonly/ReadonlyArray.
+// `this.x = y` + constructor self-init skipped. `// rothunter:ignore-mutation`
+// suppresses.
 export function detectMutations(input: MutationDetectorInput): Finding[] {
-  const project = new Project({
-    skipAddingFilesFromTsConfig: true,
-    skipFileDependencyResolution: true,
-  });
-  for (const rel of input.files) {
-    project.addSourceFileAtPathIfExists(path.join(input.workspaceRoot, rel));
+  let project: Project;
+  if (input.project) {
+    project = input.project;
+  } else {
+    project = new Project({
+      skipAddingFilesFromTsConfig: true,
+      skipFileDependencyResolution: true,
+    });
+    for (const rel of input.files) {
+      project.addSourceFileAtPathIfExists(path.join(input.workspaceRoot, rel));
+    }
   }
 
   const candidates: RawCandidate[] = [];
@@ -324,10 +311,9 @@ function collectEscapingIdentifiers(body: Node): Set<string> {
   }
   for (const bin of body.getDescendantsOfKind(SyntaxKind.BinaryExpression)) {
     if (bin.getOperatorToken().getText() !== '=') continue;
-    const lhs = bin.getLeft();
-    if (lhs.getKind() !== SyntaxKind.PropertyAccessExpression) continue;
-    const head = (lhs as { getExpression(): Node }).getExpression();
-    if (head.getKind() !== SyntaxKind.ThisKeyword) continue;
+    const lhs = bin.getLeft().asKind(SyntaxKind.PropertyAccessExpression);
+    if (!lhs) continue;
+    if (lhs.getExpression().getKind() !== SyntaxKind.ThisKeyword) continue;
     collectIdentifiers(bin.getRight(), out);
   }
   for (const call of body.getDescendantsOfKind(SyntaxKind.CallExpression)) {
@@ -353,8 +339,11 @@ function collectIdentifiers(node: Node, into: Set<string>): void {
 /** Walk a PropertyAccess / ElementAccess chain to the leftmost identifier. */
 function identifierRoot(node: Node): string | null {
   let cur: Node = node;
-  while (cur.getKind() === SyntaxKind.PropertyAccessExpression || cur.getKind() === SyntaxKind.ElementAccessExpression) {
-    cur = (cur as { getExpression(): Node }).getExpression();
+  while (true) {
+    const prop = cur.asKind(SyntaxKind.PropertyAccessExpression);
+    const elem = cur.asKind(SyntaxKind.ElementAccessExpression);
+    if (!prop && !elem) break;
+    cur = (prop ?? elem!).getExpression();
   }
   if (cur.getKind() === SyntaxKind.Identifier) return cur.getText();
   if (cur.getKind() === SyntaxKind.ThisKeyword) return 'this';
@@ -437,7 +426,7 @@ function toFinding(c: RawCandidate): Finding {
         file: c.file,
         range: { startLine: c.line, endLine: c.endLine },
         snippet: c.source,
-        // `note` carries the enclosing-function source for the LLM Tier-3
+        // `note` carries the enclosing-function source for the LLM
         // confirmer. The markdown reporter intentionally does not render it.
         note: JSON.stringify({
           enclosingSource: c.enclosingSource,

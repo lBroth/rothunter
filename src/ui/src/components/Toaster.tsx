@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { JSX } from 'react';
 import { Info, X } from 'lucide-react';
 import { onToast, type ToastPayload } from '../lib/toast.js';
 
@@ -26,9 +27,7 @@ export function Toaster(): JSX.Element {
           key={t.id}
           className={
             'flex items-start gap-2 px-3 py-2 rounded-lg border bg-panel shadow-lg text-xs font-mono ' +
-            (t.tone === 'warn'
-              ? 'border-med/40 text-med'
-              : 'border-accent/40 text-ink')
+            (t.tone === 'warn' ? 'border-med/40 text-med' : 'border-accent/40 text-ink')
           }
         >
           <Info size={13} className="shrink-0 mt-0.5 text-accent" />

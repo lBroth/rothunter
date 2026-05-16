@@ -399,4 +399,95 @@ export function bump(): void {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  // ---------- CFG-aware reachability ----------------------------------------
+  // Regression guards for the false-positive class that the source-line
+  // heuristic produced: a read that is only reached on a branch that never
+  // joins back into the write path is NOT a race.
+
+  it('CFG: does NOT flag a read whose branch always returns before any await', async () => {
+    const root = await setup({
+      'src/x.ts': `
+export class Service {
+  private value = 0;
+  async load(cond: boolean): Promise<number> {
+    if (cond) {
+      const cached = this.value;
+      return cached;
+    }
+    await new Promise<void>((res) => setTimeout(res, 1));
+    this.value = 42;
+    return 42;
+  }
+}
+`,
+    });
+    try {
+      const findings = detectRaceConditions({ workspaceRoot: root, files: ['src/x.ts'] });
+      // The only read of \`this.value\` lives in the \`if (cond)\` then-branch
+      // which unconditionally returns. The path that reaches the await +
+      // write never touches the read, so no read-modify-write can race.
+      // Pre-CFG detector flagged this on line ordering alone; CFG correctly
+      // rejects because the read-block has no successor that reaches the
+      // post-if join.
+      expect(findings).toHaveLength(0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('CFG: flags a straight-line read → await → write even when wrapped in an outer if', async () => {
+    const root = await setup({
+      'src/x.ts': `
+export class Service {
+  private value = 0;
+  async bump(cond: boolean): Promise<void> {
+    if (cond) {
+      const cur = this.value;
+      await new Promise<void>((res) => setTimeout(res, 1));
+      this.value = cur + 1;
+    }
+  }
+}
+`,
+    });
+    try {
+      const findings = detectRaceConditions({ workspaceRoot: root, files: ['src/x.ts'] });
+      // Inside the then-branch the three statements are sequential and
+      // share one CFG block — the race pattern is real on the cond=true
+      // path. Regression guard against the CFG rewrite being too eager
+      // in rejecting non-trivial control flow.
+      expect(findings.length).toBeGreaterThanOrEqual(1);
+      expect(findings[0]?.title).toContain('this.value');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('CFG: does NOT flag a read in a loop where the write happens after the loop exits before any await', async () => {
+    const root = await setup({
+      'src/x.ts': `
+export class Service {
+  private value = 0;
+  async run(): Promise<void> {
+    while (this.value < 10) {
+      const cur = this.value;
+      this.value = cur + 1;
+    }
+    await new Promise<void>((res) => setTimeout(res, 1));
+  }
+}
+`,
+    });
+    try {
+      const findings = detectRaceConditions({ workspaceRoot: root, files: ['src/x.ts'] });
+      // No await sits between the read and the write inside the loop body
+      // — both happen synchronously in the same iteration. The await is
+      // after the loop, but there's no write past it. CFG correctly sees
+      // no read-await-write triple.
+      expect(findings).toHaveLength(0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

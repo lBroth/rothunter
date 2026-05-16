@@ -1,28 +1,6 @@
-/**
- * Local LLM client — talks to any OpenAI-compatible /v1/chat/completions endpoint.
- *
- * Recommended backend on Apple Silicon: llama.cpp's `llama-server` (stable under
- * sustained sequential load). Default model is Qwen2.5-Coder-14B Q4_K_M which
- * scored 8/8 on the golden eval set; smaller variants (7B Q4, DeepSeek-V2-Lite
- * MoE) all scored 7/8 on the same set.
- *
- *   brew install llama.cpp
- *   llama-server -hf bartowski/Qwen2.5-Coder-14B-Instruct-GGUF:Q4_K_M \
- *                --port 8080 --jinja -c 4096 -n 256 --host 127.0.0.1
- *
- * mlx_lm.server has been tested and avoided: it logs HTTP 200 but fails to
- * flush response bodies to the socket under sustained sequential load, wedging
- * after a handful of requests.
- *
- * Env vars (with defaults):
- *   ROTHUNTER_LLM_BASE_URL   http://127.0.0.1:8080/v1
- *   ROTHUNTER_LLM_MODEL      bartowski/Qwen2.5-Coder-14B-Instruct-GGUF
- *   ROTHUNTER_LLM_API_KEY    (optional)
- *   ROTHUNTER_LLM_TIMEOUT_MS 300000
- *
- * The class name is historical; the protocol is plain OpenAI-compat and works
- * with llama-server, mlx_lm.server, vLLM, OpenRouter, etc.
- */
+// OpenAI-compat /v1/chat/completions client. Works with llama-server, vLLM,
+// OpenRouter. Env: ROTHUNTER_LLM_BASE_URL / _MODEL / _API_KEY / _TIMEOUT_MS.
+// mlx_lm.server avoided — wedges under sustained sequential load.
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -60,23 +38,18 @@ export class MlxLlmClient {
   private readonly apiKey?: string;
   private readonly defaultTimeoutMs: number;
 
+  /**
+   * Pure constructor — never reads process.env. Pass explicit opts (typical
+   * production wiring is via `createDefaultLlmClient()`, which collects env
+   * defaults). Keeping the constructor env-free makes the class trivially
+   * mockable + test-isolated: a test setting `process.env.ROTHUNTER_LLM_*`
+   * cannot leak into an unrelated test that instantiates this directly.
+   */
   constructor(opts: MlxLlmClientOptions = {}) {
-    this.baseUrl = (opts.baseUrl ?? process.env.ROTHUNTER_LLM_BASE_URL ?? DEFAULT_BASE_URL).replace(
-      /\/+$/,
-      '',
-    );
-    this.model = opts.model ?? process.env.ROTHUNTER_LLM_MODEL ?? DEFAULT_MODEL;
-    this.apiKey =
-      opts.apiKey ??
-      process.env.ROTHUNTER_LLM_API_KEY ??
-      process.env.OPENROUTER_API_KEY ??
-      process.env.OPENAI_API_KEY ??
-      undefined;
-
-    const envTimeout = Number(process.env.ROTHUNTER_LLM_TIMEOUT_MS);
-    this.defaultTimeoutMs =
-      opts.defaultTimeoutMs ??
-      (Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : DEFAULT_TIMEOUT_MS);
+    this.baseUrl = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+    this.model = opts.model ?? DEFAULT_MODEL;
+    this.apiKey = opts.apiKey;
+    this.defaultTimeoutMs = opts.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
@@ -140,4 +113,26 @@ export class MlxLlmClient {
       // best-effort warmup; main chat() will surface real errors
     }
   }
+}
+
+/**
+ * Build an MlxLlmClient from `ROTHUNTER_LLM_*` env vars (with the standard
+ * fallback chain for the API key: ROTHUNTER_LLM_API_KEY → OPENROUTER_API_KEY
+ * → OPENAI_API_KEY). All production call sites that previously did
+ * `new MlxLlmClient()` now route through here so env coupling lives in one
+ * place. Tests construct `MlxLlmClient` directly with explicit opts to
+ * bypass env reads.
+ */
+export function createDefaultLlmClient(): MlxLlmClient {
+  const envTimeout = Number(process.env.ROTHUNTER_LLM_TIMEOUT_MS);
+  return new MlxLlmClient({
+    baseUrl: process.env.ROTHUNTER_LLM_BASE_URL,
+    model: process.env.ROTHUNTER_LLM_MODEL,
+    apiKey:
+      process.env.ROTHUNTER_LLM_API_KEY ??
+      process.env.OPENROUTER_API_KEY ??
+      process.env.OPENAI_API_KEY,
+    defaultTimeoutMs:
+      Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : undefined,
+  });
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MlxLlmClient } from '../adapters/mlx-llm.js';
+import { MlxLlmClient, createDefaultLlmClient } from '../adapters/mlx-llm.js';
 import { parseLlmJsonResponse } from '../utils/llm-json.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -53,8 +53,8 @@ Decision rules (apply IN ORDER — first match wins):
    → safe (one caller is in tests/, function name is \`test_creates_user\`)
 
    NEGATIVE example — rule 1 does NOT fire (this is the dominant case):
-       [1] src/rothunter/__fixtures__/shared-db/case_03_typeorm_status_api.ts:5 — markOrderPaidFromApi
-       [2] src/rothunter/__fixtures__/shared-db/case_03_typeorm_status_consumer.ts:5 — refundOrderFromKafkaConsumer
+       [1] src/__fixtures__/shared-db/case_03_typeorm_status_api.ts:5 — markOrderPaidFromApi
+       [2] src/__fixtures__/shared-db/case_03_typeorm_status_consumer.ts:5 — refundOrderFromKafkaConsumer
    → NOT safe via rule 1. Paths contain \`__fixtures__\` which is NOT \`__tests__\` and NOT \`.test.ts\`. Owner suffixes \`_api\` / \`_consumer\` go to rule 7.
 
    NEGATIVE example #2 — rule 1 also does NOT fire on production paths:
@@ -113,12 +113,13 @@ export class SharedDbWriteConfirmer {
   private cache = new Map<string, SharedDbVerdict>();
 
   constructor(llm?: MlxLlmClient) {
-    this.llm = llm ?? new MlxLlmClient();
+    this.llm = llm ?? createDefaultLlmClient();
   }
 
   async confirm(input: SharedDbCheckInput): Promise<SharedDbVerdict | null> {
     const cacheKey = `${input.entity}.${input.column}::${input.adapters}::${input.sites
       .map((s) => `${s.file}:${s.line}`)
+      .sort()
       .join(',')}`;
     const cached = this.cache.get(cacheKey);
     if (cached) return cached;

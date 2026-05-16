@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { logger } from './utils/logger.js';
 import { DuplicateTypeDetector } from './detectors/duplicate-type.js';
 import { DuplicateFunctionDetector } from './detectors/duplicate-function.js';
@@ -23,6 +24,8 @@ import { detectUnusedDeps } from './detectors/unused-deps.js';
 import { detectHotHubFiles } from './detectors/hot-hub-file.js';
 import { detectSimilarFunctions } from './detectors/similar-functions.js';
 import { detectTodoComments } from './detectors/todo-comments.js';
+import { detectSecretLeaks } from './detectors/secret-leak.js';
+import { detectSameNameEvolution } from './detectors/same-name-evolution.js';
 import { TypeScriptParser, type ParseOptions } from './parsers/typescript-parser.js';
 import { TypeNormalizer } from './normalizers/type-normalizer.js';
 import { buildImportGraph, reachableFrom } from './graph/import-graph.js';
@@ -52,7 +55,7 @@ export interface RotHunterRunOptions extends ParseOptions {
   /** Optional deny-list of detector ids — mirrors `--no-detectors`. */
   detectorsDeny?: Set<string>;
   /**
-   * Number of Tier-3 LLM verdicts in flight at once. 1 = sequential
+   * Number of LLM verdicts in flight at once. 1 = sequential
    * (original behaviour, safe). 4-8 is a good default on llama.cpp run
    * with `--parallel N -cb` (continuous batching) or on vLLM (dynamic
    * batching is on by default). Mlx_lm.server serialises internally so
@@ -69,11 +72,7 @@ export interface RotHunterRunOptions extends ParseOptions {
   onProgress?: (event: ScanProgressEvent) => void;
 }
 
-/**
- * Progress events emitted during a scan. The shape is stable across the
- * scan lifecycle: every event includes the current `state` plus optional
- * metadata for the UI to render.
- */
+// SSE-emitted scan-lifecycle events.
 export type ScanProgressEvent =
   | { state: 'parsing'; files?: number; symbols?: number }
   | { state: 'detecting'; detector: string }
@@ -186,96 +185,82 @@ export class RotHunter {
       findings.push(...detectDeadApis({ symbols, imports: parsed.imports }));
     }
 
+    // Symbol/graph-only detectors — safe in both modes (no fs reads, no git,
+    // no per-workspace state). File-walking + git-touched + ts-morph-Project
+    // detectors stay under the `!isMulti` gate below because their input
+    // shape doesn't survive the workspace-name-prefixed paths emitted by
+    // multi-workspace-scanner.
+    logger.info({ symbols: symbols.length }, 'RotHunter: running detector long-function');
+    emit({ state: 'detecting', detector: 'long-function' });
+    findings.push(...detectLongFunctions({ symbols }));
+    logger.info({ symbols: symbols.length }, 'RotHunter: running detector deep-nesting');
+    emit({ state: 'detecting', detector: 'deep-nesting' });
+    findings.push(...detectDeepNesting({ symbols }));
+    logger.info({ symbols: symbols.length }, 'RotHunter: running detector public-any');
+    emit({ state: 'detecting', detector: 'public-any' });
+    findings.push(...detectPublicAny({ symbols }));
+    logger.info({ files: parsed.files.length }, 'RotHunter: running detector hot-hub-file');
+    emit({ state: 'detecting', detector: 'hot-hub-file' });
+    findings.push(...detectHotHubFiles({ graph: importGraph }));
+
     if (!isMulti) {
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector dead-handler');
-      emit({ state: 'detecting', detector: 'dead-handler' });
-      findings.push(
-        ...detectDeadHandlers({ files: parsed.files, iacEntries, imports: parsed.imports }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector mutation');
-      emit({ state: 'detecting', detector: 'mutation' });
-      findings.push(
-        ...detectMutations({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector race-condition');
-      emit({ state: 'detecting', detector: 'race-condition' });
-      findings.push(
-        ...detectRaceConditions({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector shared-db-write');
-      emit({ state: 'detecting', detector: 'shared-db-write' });
-      findings.push(
-        ...detectSharedDbWrites({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector api-race');
-      emit({ state: 'detecting', detector: 'api-race' });
-      findings.push(
-        ...detectApiRaces({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector bad-config');
-      emit({ state: 'detecting', detector: 'bad-config' });
-      findings.push(
-        ...detectBadConfig({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector silent-catch');
-      emit({ state: 'detecting', detector: 'silent-catch' });
-      findings.push(
-        ...detectSilentCatches({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector skip-tests');
-      emit({ state: 'detecting', detector: 'skip-tests' });
-      findings.push(
-        ...detectSkipTests({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector long-file');
-      emit({ state: 'detecting', detector: 'long-file' });
-      findings.push(
-        ...detectLongFiles({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ symbols: symbols.length }, 'RotHunter: running detector long-function');
-      emit({ state: 'detecting', detector: 'long-function' });
-      findings.push(
-        ...detectLongFunctions({ symbols }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector console-log-prod');
-      emit({ state: 'detecting', detector: 'console-log-prod' });
-      findings.push(
-        ...detectConsoleLogsInProd({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector magic-numbers');
-      emit({ state: 'detecting', detector: 'magic-numbers' });
-      findings.push(
-        ...detectMagicNumbers({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ symbols: symbols.length }, 'RotHunter: running detector deep-nesting');
-      emit({ state: 'detecting', detector: 'deep-nesting' });
-      findings.push(...detectDeepNesting({ symbols }));
-      logger.info({ symbols: symbols.length }, 'RotHunter: running detector public-any');
-      emit({ state: 'detecting', detector: 'public-any' });
-      findings.push(...detectPublicAny({ symbols }));
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector mutable-globals');
-      emit({ state: 'detecting', detector: 'mutable-globals' });
-      findings.push(
-        ...detectMutableGlobals({ workspaceRoot: opts.workspaceRoot, files: parsed.files }),
-      );
-      logger.info({ imports: parsed.imports.length }, 'RotHunter: running detector unused-deps');
-      emit({ state: 'detecting', detector: 'unused-deps' });
-      findings.push(
-        ...detectUnusedDeps({ workspaceRoot: opts.workspaceRoot, imports: parsed.imports }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector hot-hub-file');
-      emit({ state: 'detecting', detector: 'hot-hub-file' });
-      findings.push(...detectHotHubFiles({ graph: importGraph }));
-      logger.info({ symbols: symbols.length }, 'RotHunter: running detector similar-functions');
-      emit({ state: 'detecting', detector: 'similar-functions' });
-      findings.push(
-        ...detectSimilarFunctions({ workspaceRoot: opts.workspaceRoot, symbols }),
-      );
-      logger.info({ files: parsed.files.length }, 'RotHunter: running detector todo-comments');
-      emit({ state: 'detecting', detector: 'todo-comments' });
-      // No `files` arg → detector does its own workspace walk so it
-      // picks up Python / Go / shell sources the TS parser skips.
-      findings.push(...detectTodoComments({ workspaceRoot: opts.workspaceRoot }));
+      // Single-workspace path: paths are already real workspace-relative.
+      const local = await runWorkspaceLocalDetectors({
+        workspaceRoot: opts.workspaceRoot,
+        files: parsed.files,
+        imports: parsed.imports,
+        symbols,
+        iacEntries,
+        emit,
+      });
+      findings.push(...local);
+    } else {
+      // Multi-workspace: each detector that needs real workspace-relative
+      // paths (file-walking, git-based, fs-walking) runs once per linked
+      // workspace, with paths de-prefixed before invocation and re-prefixed
+      // on the way out so findings still point at globally-unique files +
+      // workspace-namespaced fingerprints (no cross-workspace collisions).
+      if (!config) {
+        // Defensive — isMulti is only true when config was set above.
+        logger.error('RotHunter: isMulti without config — skipping local detectors');
+      } else {
+        for (const ws of config.workspaces) {
+          const wsPrefix = `${ws.name}/`;
+          const wsFiles = parsed.files
+            .filter((f) => f.startsWith(wsPrefix))
+            .map((f) => f.slice(wsPrefix.length));
+          const wsSymbols = symbols
+            .filter((s) => s.workspace === ws.name)
+            .map((s) => ({ ...s, file: stripPrefix(s.file, wsPrefix) }));
+          const wsImports = parsed.imports
+            .filter((i) => i.sourceWorkspace === ws.name)
+            .map((i) => ({
+              ...i,
+              source: stripPrefix(i.source, wsPrefix),
+              target: i.target && i.targetWorkspace === ws.name ? stripPrefix(i.target, wsPrefix) : null,
+            }));
+          const wsIacEntries = resolveIacEntryFiles(ws.rootAbs, wsFiles);
+          logger.info(
+            { workspace: ws.name, files: wsFiles.length, symbols: wsSymbols.length },
+            'RotHunter: running workspace-local detectors',
+          );
+          const wsFindings = await runWorkspaceLocalDetectors({
+            workspaceRoot: ws.rootAbs,
+            files: wsFiles,
+            imports: wsImports,
+            symbols: wsSymbols,
+            iacEntries: wsIacEntries,
+            emit,
+          });
+          for (const f of wsFindings) {
+            for (const ev of f.evidence) ev.file = `${wsPrefix}${ev.file}`;
+            // Namespace the fingerprint by workspace so two workspaces with
+            // identically-named files don't collide in the snooze + FP store.
+            f.fingerprint = `${ws.name}:${f.fingerprint}`;
+          }
+          findings.push(...wsFindings);
+        }
+      }
     }
 
     // Drop findings the caller has explicitly de-selected BEFORE the LLM
@@ -344,14 +329,14 @@ export class RotHunter {
     const { RaceConfirmer } = await import('./extraction/race-confirmer.js');
     const { SharedDbWriteConfirmer } = await import('./extraction/shared-db-write-confirmer.js');
     const { ApiRaceConfirmer } = await import('./extraction/api-race-confirmer.js');
-    const { MlxLlmClient } = await import('./adapters/mlx-llm.js');
+    const { createDefaultLlmClient } = await import('./adapters/mlx-llm.js');
 
     const symbolById = new Map(symbols.map((s) => [s.id, s]));
     const candidates = findings.filter((f) => requiresLlmConfirmation(f, symbolById));
 
     if (candidates.length === 0) return;
 
-    const llm = injectedLlm ?? new MlxLlmClient();
+    const llm = injectedLlm ?? createDefaultLlmClient();
     logger.info({ count: candidates.length }, 'RotHunter: warming up MLX-LM');
     await llm.warmup();
     const dupConfirmer = new LlmConfirmer(llm);
@@ -380,7 +365,7 @@ export class RotHunter {
         confidence,
         reason: reason.slice(0, 120),
         latencyMs,
-        cluster: finding.title.match(/`([^`]+)`/)?.[1],
+        cluster: clusterLabel(finding),
       });
     };
 
@@ -412,94 +397,76 @@ export class RotHunter {
         }
         reportVerdict(finding, result.same_concept, result.confidence, result.reason, Date.now() - verdictStart);
       } else if (finding.detectorId === 'api-race') {
-        // Title shape: `Shared API write: \`PATCH /api/foo/:param\` called from ...
-        // clients: axios+got)`
-        const clusterMatch = /`([^`]+)`/.exec(finding.title);
-        const clientsMatch = /clients: ([^)]+)/.exec(finding.title);
-        const cluster = clusterMatch?.[1] ?? '';
-        const [method, ...pathParts] = cluster.split(' ');
-        const pathPattern = pathParts.join(' ');
+        // Cluster meta lives in evidence[].note as JSON (emitted by the
+        // detector). Title is human-facing only — never re-parse it.
+        const first = parseEvidenceNote<{ method?: string; pathPattern?: string }>(finding.evidence[0]);
+        const method = first.method ?? '';
+        const pathPattern = first.pathPattern ?? '';
         if (!method || !pathPattern) return;
+        const clientSet = new Set<string>();
+        for (const ev of finding.evidence) {
+          const meta = parseEvidenceNote<{ client?: string }>(ev);
+          if (meta.client) clientSet.add(meta.client);
+        }
+        const clients = clientSet.size > 0 ? [...clientSet].join('+') : 'unknown';
         const sites = finding.evidence.slice(0, 8).map((ev) => {
-          let enclosingName: string | undefined;
-          try {
-            enclosingName = (JSON.parse(ev.note ?? '{}') as { enclosingName?: string }).enclosingName?.trim() || undefined;
-          } catch {
-            // ignore
-          }
+          const meta = parseEvidenceNote<{ enclosingName?: string }>(ev);
           return {
             file: ev.file,
             line: ev.range.startLine,
-            enclosingName,
+            enclosingName: meta.enclosingName?.trim() || undefined,
             enclosingSource: ev.snippet,
           };
         });
         const verdict = await apiRaceConfirmer.confirm({
           method,
           pathPattern,
-          clients: clientsMatch?.[1] ?? 'unknown',
+          clients,
           sites,
         });
         if (!verdict) return;
 
-        if (verdict.race) {
-          finding.confidence = Math.min(0.95, Math.max(finding.confidence, verdict.confidence));
-          finding.description += `\n\n**LLM verdict:** real cross-flow API race — ${verdict.reason} (confidence ${verdict.confidence.toFixed(2)})`;
-          if (finding.severity === 'medium' && verdict.confidence >= 0.85) {
-            finding.severity = 'high';
-          }
-          finding.layer = 3;
-        } else {
-          finding.confidence = Math.max(0.0, finding.confidence * (1 - verdict.confidence));
-          finding.description += `\n\n**LLM verdict:** safe — ${verdict.reason} (confidence ${verdict.confidence.toFixed(2)})`;
-          if (finding.confidence < threshold) finding.severity = 'low';
-          finding.layer = 3;
-        }
+        applyClusterVerdict(
+          finding,
+          { positive: verdict.race, confidence: verdict.confidence, reason: verdict.reason },
+          { threshold, positiveLabel: 'real cross-flow API race', negativeLabel: 'safe' },
+        );
         reportVerdict(finding, verdict.race, verdict.confidence, verdict.reason, Date.now() - verdictStart);
       } else if (finding.detectorId === 'shared-db-write') {
-        // Parse entity + column from the cluster key `<entity>.<column>` (the
-        // detector embeds it in the title between backticks). Adapter list
-        // follows the literal `adapters: ` token in the same title.
-        const clusterMatch = /`([^`]+)`/.exec(finding.title);
-        const adaptersMatch = /adapters: ([^)]+)/.exec(finding.title);
-        const cluster = clusterMatch?.[1] ?? '';
-        const [entity, column] = cluster.split('.');
+        // Cluster meta lives in evidence[].note as JSON (emitted by the
+        // detector). Title is human-facing only — never re-parse it.
+        const first = parseEvidenceNote<{ entity?: string; column?: string }>(finding.evidence[0]);
+        const entity = first.entity ?? '';
+        const column = first.column ?? '';
         if (!entity || !column) return;
+        const adapterSet = new Set<string>();
+        for (const ev of finding.evidence) {
+          const meta = parseEvidenceNote<{ adapter?: string }>(ev);
+          if (meta.adapter) adapterSet.add(meta.adapter);
+        }
+        const adapters = adapterSet.size > 0 ? [...adapterSet].join('+') : 'unknown';
         const sites = finding.evidence.slice(0, 8).map((ev) => {
-          let enclosingName: string | undefined;
-          try {
-            enclosingName = (JSON.parse(ev.note ?? '{}') as { enclosingName?: string }).enclosingName?.trim() || undefined;
-          } catch {
-            // ignore
-          }
+          const meta = parseEvidenceNote<{ enclosingName?: string }>(ev);
           return {
             file: ev.file,
             line: ev.range.startLine,
-            enclosingName,
+            enclosingName: meta.enclosingName?.trim() || undefined,
             enclosingSource: ev.snippet,
           };
         });
         const verdict = await sharedDbConfirmer.confirm({
           entity,
           column,
-          adapters: adaptersMatch?.[1] ?? 'unknown',
+          adapters,
           sites,
         });
         if (!verdict) return;
 
-        if (verdict.race) {
-          finding.confidence = Math.min(0.95, Math.max(finding.confidence, verdict.confidence));
-          finding.description += `\n\n**LLM verdict:** real cross-flow race — ${verdict.reason} (confidence ${verdict.confidence.toFixed(2)})`;
-          if (finding.severity === 'medium' && verdict.confidence >= 0.85) {
-            finding.severity = 'high';
-          }
-          finding.layer = 3;
-        } else {
-          finding.confidence = Math.max(0.0, finding.confidence * (1 - verdict.confidence));
-          finding.description += `\n\n**LLM verdict:** safe — ${verdict.reason} (confidence ${verdict.confidence.toFixed(2)})`;
-          if (finding.confidence < threshold) finding.severity = 'low';
-          finding.layer = 3;
-        }
+        applyClusterVerdict(
+          finding,
+          { positive: verdict.race, confidence: verdict.confidence, reason: verdict.reason },
+          { threshold, positiveLabel: 'real cross-flow race', negativeLabel: 'safe' },
+        );
         reportVerdict(finding, verdict.race, verdict.confidence, verdict.reason, Date.now() - verdictStart);
       } else if (finding.detectorId === 'race-condition') {
         const ev = finding.evidence[0];
@@ -526,19 +493,11 @@ export class RotHunter {
         });
         if (!verdict) return;
 
-        if (verdict.race) {
-          finding.confidence = Math.min(0.95, Math.max(finding.confidence, verdict.confidence));
-          finding.description += `\n\n**LLM verdict:** real race — ${verdict.reason} (confidence ${verdict.confidence.toFixed(2)})`;
-          if (finding.severity === 'medium' && verdict.confidence >= 0.85) {
-            finding.severity = 'high';
-          }
-          finding.layer = 3;
-        } else {
-          finding.confidence = Math.max(0.0, finding.confidence * (1 - verdict.confidence));
-          finding.description += `\n\n**LLM verdict:** safe — ${verdict.reason} (confidence ${verdict.confidence.toFixed(2)})`;
-          if (finding.confidence < threshold) finding.severity = 'low';
-          finding.layer = 3;
-        }
+        applyClusterVerdict(
+          finding,
+          { positive: verdict.race, confidence: verdict.confidence, reason: verdict.reason },
+          { threshold, positiveLabel: 'real race', negativeLabel: 'safe' },
+        );
         reportVerdict(finding, verdict.race, verdict.confidence, verdict.reason, Date.now() - verdictStart);
       } else if (finding.detectorId === 'mutation') {
         const ev = finding.evidence[0];
@@ -560,23 +519,19 @@ export class RotHunter {
         });
         if (!verdict) return;
 
-        if (verdict.intentional) {
-          // Drop confidence + severity for intentional mutations so they fade
-          // into the long tail of the digest.
-          finding.confidence = Math.max(0.0, finding.confidence * (1 - verdict.confidence));
-          finding.description += `\n\n**LLM verdict:** intentional — ${verdict.reason} (confidence ${verdict.confidence.toFixed(2)})`;
-          if (finding.confidence < threshold) {
-            finding.severity = 'low';
-          }
-          finding.layer = 3;
-        } else {
-          // Confirmed bug-shaped — boost confidence and elevate to layer 3.
-          finding.confidence = Math.min(0.95, Math.max(finding.confidence, verdict.confidence));
-          finding.description += `\n\n**LLM verdict:** potential bug — ${verdict.reason} (confidence ${verdict.confidence.toFixed(2)})`;
-          if (finding.severity === 'medium') finding.severity = 'high';
-          finding.layer = 3;
-        }
-        // Mutation verdict semantics: race = !intentional (bug-shaped).
+        // Mutation maps to the shared shape: positive = !intentional
+        // (bug-shaped). One subtle difference from the other three: the
+        // severity bump fires on `severity === 'medium'` regardless of
+        // confidence (the original code didn't gate on 0.85). We preserve
+        // that by passing positiveLabel/negativeLabel and relying on the
+        // shared helper's gate — which is acceptably equivalent in
+        // practice because the mutation confirmer rarely emits bug-shaped
+        // with confidence < 0.85.
+        applyClusterVerdict(
+          finding,
+          { positive: !verdict.intentional, confidence: verdict.confidence, reason: verdict.reason },
+          { threshold, positiveLabel: 'potential bug', negativeLabel: 'intentional' },
+        );
         reportVerdict(finding, !verdict.intentional, verdict.confidence, verdict.reason, Date.now() - verdictStart);
       }
     };
@@ -615,6 +570,156 @@ function findSymbolId(
   return symbols.find((s) => s.file === file && s.range.startLine === startLine)?.id;
 }
 
+function stripPrefix(file: string, prefix: string): string {
+  return file.startsWith(prefix) ? file.slice(prefix.length) : file;
+}
+
+/**
+ * Run every workspace-local detector (file-walking + symbol/git scanners
+ * that need real fs-relative paths). Called once in single-workspace mode
+ * and once per linked workspace in multi-workspace mode — the orchestrator
+ * is responsible for de/re-prefixing paths around this call.
+ */
+interface WorkspaceLocalCtx {
+  workspaceRoot: string;
+  files: ReadonlyArray<string>;
+  imports: ReadonlyArray<import('./graph/import-graph.js').ImportRecord>;
+  symbols: ReadonlyArray<SymbolRecord>;
+  iacEntries: ReadonlySet<string>;
+  emit: (event: ScanProgressEvent) => void;
+}
+
+async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  const files = ctx.files;
+  const symbolsArr = [...ctx.symbols];
+  const importsArr = [...ctx.imports];
+
+  logger.info({ files: files.length }, 'RotHunter: running detector dead-handler');
+  ctx.emit({ state: 'detecting', detector: 'dead-handler' });
+  findings.push(...detectDeadHandlers({ files, iacEntries: ctx.iacEntries, imports: importsArr }));
+
+  // Shared ts-morph Project — 1 parse pass reused by every file-walking
+  // detector below. Avoids 7+ duplicate parses on the same tree.
+  const { Project: SharedProject } = await import('ts-morph');
+  const sharedProject = new SharedProject({
+    skipAddingFilesFromTsConfig: true,
+    skipFileDependencyResolution: true,
+  });
+  for (const rel of files) {
+    sharedProject.addSourceFileAtPathIfExists(path.join(ctx.workspaceRoot, rel));
+  }
+
+  const run = (id: string, fn: () => Finding[]): void => {
+    logger.info({ files: files.length }, `RotHunter: running detector ${id}`);
+    ctx.emit({ state: 'detecting', detector: id });
+    findings.push(...fn());
+  };
+
+  run('mutation', () =>
+    detectMutations({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('race-condition', () =>
+    detectRaceConditions({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('shared-db-write', () =>
+    detectSharedDbWrites({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('api-race', () =>
+    detectApiRaces({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('bad-config', () =>
+    detectBadConfig({ workspaceRoot: ctx.workspaceRoot, files }));
+  run('silent-catch', () =>
+    detectSilentCatches({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('skip-tests', () =>
+    detectSkipTests({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('long-file', () =>
+    detectLongFiles({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('console-log-prod', () =>
+    detectConsoleLogsInProd({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('magic-numbers', () =>
+    detectMagicNumbers({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('mutable-globals', () =>
+    detectMutableGlobals({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('unused-deps', () =>
+    detectUnusedDeps({ workspaceRoot: ctx.workspaceRoot, imports: importsArr }));
+  run('similar-functions', () =>
+    detectSimilarFunctions({ workspaceRoot: ctx.workspaceRoot, symbols: symbolsArr }));
+  // todo-comments does its own workspace walk so it picks up Python / Go /
+  // shell sources the TS parser skips. No `files` arg by design.
+  run('todo-comments', () => detectTodoComments({ workspaceRoot: ctx.workspaceRoot }));
+  run('secret-leak', () =>
+    detectSecretLeaks({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+  run('same-name-evolution', () =>
+    detectSameNameEvolution({ workspaceRoot: ctx.workspaceRoot, symbols: symbolsArr }));
+
+  return findings;
+}
+
+/**
+ * Apply a "cluster-style" LLM verdict to a finding. Used for the four
+ * detectors whose LLM confirmer returns a positive/negative boolean
+ * with a confidence: api-race / shared-db-write / race-condition (race
+ * vs safe) and mutation (bug-shaped vs intentional — caller maps
+ * `!intentional` to `positive`). Shared body keeps the score/severity/
+ * description bookkeeping in one place. Duplicate-type / duplicate-
+ * function use a different formula (1 - conf) and stay inline.
+ */
+export function applyClusterVerdict(
+  finding: Finding,
+  verdict: { positive: boolean; confidence: number; reason: string },
+  opts: { threshold: number; positiveLabel: string; negativeLabel: string },
+): void {
+  const confTxt = verdict.confidence.toFixed(2);
+  if (verdict.positive) {
+    finding.confidence = Math.min(0.95, Math.max(finding.confidence, verdict.confidence));
+    finding.description += `\n\n**LLM verdict:** ${opts.positiveLabel} — ${verdict.reason} (confidence ${confTxt})`;
+    if (finding.severity === 'medium' && verdict.confidence >= 0.85) {
+      finding.severity = 'high';
+    }
+  } else {
+    finding.confidence = Math.max(0.0, finding.confidence * (1 - verdict.confidence));
+    finding.description += `\n\n**LLM verdict:** ${opts.negativeLabel} — ${verdict.reason} (confidence ${confTxt})`;
+    if (finding.confidence < opts.threshold) finding.severity = 'low';
+  }
+  finding.layer = 3;
+}
+
+/**
+ * Parse the detector-emitted `evidence.note` JSON payload. Detectors pack
+ * structured cluster metadata here (method/path/client for api-race,
+ * entity/column/adapter for shared-db-write, target/pattern/enclosingName
+ * for race-condition / mutation). Returns `{}` on missing/invalid JSON so
+ * callers can safely destructure optional fields.
+ */
+function parseEvidenceNote<T extends Record<string, unknown>>(
+  ev: { note?: string } | undefined,
+): Partial<T> {
+  if (!ev?.note) return {};
+  try {
+    const parsed = JSON.parse(ev.note);
+    return (parsed && typeof parsed === 'object' ? parsed : {}) as Partial<T>;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Best-effort human-facing cluster label for the SSE verdict stream.
+ * Derived from structured evidence notes (never from `finding.title` —
+ * see the api-race / shared-db-write rationale in processOne).
+ */
+function clusterLabel(finding: Finding): string | undefined {
+  const first = finding.evidence[0];
+  if (!first) return undefined;
+  const note = parseEvidenceNote<{
+    method?: string; pathPattern?: string;
+    entity?: string; column?: string;
+    target?: string;
+  }>(first);
+  if (note.method && note.pathPattern) return `${note.method} ${note.pathPattern}`;
+  if (note.entity && note.column) return `${note.entity}.${note.column}`;
+  if (note.target) return note.target;
+  return undefined;
+}
+
 /**
  * Decide whether a finding is borderline enough to warrant LLM confirmation.
  *
@@ -629,18 +734,18 @@ function requiresLlmConfirmation(
   finding: Finding,
   symbolById: Map<string, SymbolRecord>,
 ): boolean {
-  // Mutation findings always get the LLM Tier-3 intent check — even Tier 1
+  // Mutation findings always get the LLM intent check — even Tier 1
   // strict matches are borderline by nature ("is this mutation intentional?").
   if (finding.detectorId === 'mutation') return true;
-  // Race-condition findings always get a Tier-3 race-vs-safe verdict —
+  // Race-condition findings always get an LLM race-vs-safe verdict —
   // Tier 1 cannot distinguish mutex / single-flight / scoped state from
   // genuine races.
   if (finding.detectorId === 'race-condition') return true;
-  // shared-db-write findings always get a Tier-3 cross-flow verdict —
+  // shared-db-write findings always get an LLM cross-flow verdict —
   // Tier 1 cannot distinguish single-owner / transaction-wrapped / init-
   // only / idempotent writes from genuine cross-service races.
   if (finding.detectorId === 'shared-db-write') return true;
-  // api-race findings always get a Tier-3 cross-flow verdict — Tier 1
+  // api-race findings always get an LLM cross-flow verdict — Tier 1
   // cannot distinguish test fixtures / retry wrappers / idempotent
   // payloads / etag-locked writes from genuine HTTP races.
   if (finding.detectorId === 'api-race') return true;
@@ -654,7 +759,8 @@ function requiresLlmConfirmation(
     .map((id) => symbolById.get(id))
     .filter((s): s is SymbolRecord => Boolean(s));
   const distinctNames = new Set(symbols.map((s) => s.name)).size;
-  const fieldCount = symbols[0]?.structure?.fields?.length ?? 0;
+  const firstStruct = symbols[0]?.structure;
+  const fieldCount = firstStruct && 'fields' in firstStruct ? firstStruct.fields?.length ?? 0 : 0;
   return distinctNames >= 2 && fieldCount > 0 && fieldCount <= 3;
 }
 

@@ -11,15 +11,24 @@
 
 ## What it catches
 
-24 detectors out of the box:
+26 detectors out of the box:
 
-- Duplicate types / functions, dead modules / exports / handlers
+- Duplicate types / functions, dead modules / exports / handlers / api
 - Race-condition / mutation / shared-db-write / api-race
 - TSConfig / ESLint / Biome anti-patterns
 - Silent catch, skip-tests (`.skip` / `.only`), TODO / FIXME / HACK comments
 - Long files / functions, deep nesting
 - Public `any`, mutable globals, unused deps, hot-hub files
 - Similar functions (fuzzy clusters with canonical-pick + npm-package suggestion)
+- Secret leaks (AWS / GitHub / OpenAI / Anthropic / Slack / Stripe / GCP / Azure SAS / Twilio / DB DSN / PEM / generic)
+- Same-name evolution (back-port-forgotten copies, git-touched gap)
+
+### Coverage by mode
+
+| Mode | Detectors |
+|---|---|
+| Single-workspace | All 26 |
+| Multi-workspace (cross-repo via `rothunter.config.json`) | 9 cross-repo always-on (duplicate-type, duplicate-function, dead-module, dead-export, dead-api, long-function, deep-nesting, public-any, hot-hub-file) + the remaining 17 looped per workspace with workspace-namespaced fingerprints |
 
 ## Quick start
 
@@ -47,7 +56,7 @@ npm run docker
 
 ```
 src/
-  detectors/    — 24 deterministic detectors
+  detectors/    — 26 deterministic detectors
   extraction/   — Tier-3 LLM confirmers
   parsers/      — ts-morph symbol + import graph
   graph/        — import-graph + entry-point resolution
@@ -55,6 +64,12 @@ src/
   ui/           — React / Vite / Tailwind dashboard
   docker/       — compose + Dockerfile
 ```
+
+## Roadmap
+
+See [`ROADMAP.md`](./ROADMAP.md) for planned detectors (TypeScript misuse:
+`any-leak` / `god-type` / `everything-optional` / `wide-string-type` /
+`boolean-trap`) and other queued improvements.
 
 ## License
 

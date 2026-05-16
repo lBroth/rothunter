@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { JSX } from 'react';
 import { Activity, ChevronRight, Loader2, RefreshCcw } from 'lucide-react';
 import { subscribeScan, type ScanSseEvent } from '../lib/api.js';
 

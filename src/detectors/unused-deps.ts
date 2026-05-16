@@ -9,21 +9,8 @@ export interface UnusedDepsDetectorInput {
   imports: ReadonlyArray<ImportRecord>;
 }
 
-/**
- * Unused-deps detector.
- *
- * Compares `dependencies` + `peerDependencies` in package.json against
- * the set of npm specifiers actually imported across the workspace.
- * Anything declared but never imported is flagged as LOW (could be a
- * runtime-loaded plugin, but mostly is dead).
- *
- * Does NOT flag `devDependencies` — those are typically build tools
- * invoked from npm scripts, not imported in source.
- *
- * Excludes monorepo-style "workspace:*" entries and well-known runtime
- * loaders (`tsx`, `tsconfig-paths`, …) that are intentionally not
- * `import`-ed.
- */
+// dependencies + peerDependencies declared but never imported. LOW.
+// Skips devDeps, workspace:* entries, known runtime loaders (tsx, …).
 export function detectUnusedDeps(input: UnusedDepsDetectorInput): Finding[] {
   const pkgPath = path.join(input.workspaceRoot, 'package.json');
   if (!existsSync(pkgPath)) return [];

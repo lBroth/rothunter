@@ -1,7 +1,7 @@
 import * as crypto from 'node:crypto';
-import * as path from 'node:path';
-import { readFileSync } from 'node:fs';
+import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
+import { makeSourceReader } from '../utils/source-reader.js';
 
 export interface LongFileDetectorInput {
   workspaceRoot: string;
@@ -12,37 +12,23 @@ export interface LongFileDetectorInput {
   medThreshold?: number;
   /** HIGH threshold. Default 1200. */
   highThreshold?: number;
+  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
+  project?: Project;
 }
 
-/**
- * Long-file detector.
- *
- * Counts effective lines of code (non-blank, non-pure-comment) per file
- * and flags those that exceed the configured thresholds:
- *   - default LOW  ≥ 400 LOC
- *   - default MED  ≥ 700 LOC
- *   - default HIGH ≥ 1200 LOC
- *
- * The defaults are empirical — most idiomatic TS files in well-factored
- * codebases stay under 400 LOC. Anything over 1200 is almost always a
- * "god file" that should be split. Generated / type-declaration files
- * are excluded.
- */
+// Effective LOC (non-blank, non-pure-comment) over 400 (low) / 700 (med) /
+// 1200 (high). Generated + .d.ts excluded.
 export function detectLongFiles(input: LongFileDetectorInput): Finding[] {
   const low = input.lowThreshold ?? 400;
   const med = input.medThreshold ?? 700;
   const high = input.highThreshold ?? 1200;
+  const read = makeSourceReader(input.workspaceRoot, input.project);
   const findings: Finding[] = [];
 
   for (const rel of input.files) {
     if (!isAnalysable(rel)) continue;
-    const abs = path.resolve(input.workspaceRoot, rel);
-    let raw: string;
-    try {
-      raw = readFileSync(abs, 'utf-8');
-    } catch {
-      continue;
-    }
+    const raw = read(rel);
+    if (raw == null) continue;
     const loc = countEffectiveLines(raw);
     if (loc < low) continue;
     const severity: 'high' | 'medium' | 'low' = loc >= high ? 'high' : loc >= med ? 'medium' : 'low';

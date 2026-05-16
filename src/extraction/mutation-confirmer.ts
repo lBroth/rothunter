@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MlxLlmClient } from '../adapters/mlx-llm.js';
+import { MlxLlmClient, createDefaultLlmClient } from '../adapters/mlx-llm.js';
 import { parseLlmJsonResponse } from '../utils/llm-json.js';
 import { logger } from '../utils/logger.js';
 
@@ -55,7 +55,7 @@ export class MutationConfirmer {
   private cache = new Map<string, MutationVerdict>();
 
   constructor(llm?: MlxLlmClient) {
-    this.llm = llm ?? new MlxLlmClient();
+    this.llm = llm ?? createDefaultLlmClient();
   }
 
   async confirm(input: MutationCheckInput): Promise<MutationVerdict | null> {

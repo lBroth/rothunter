@@ -10,19 +10,20 @@ export interface HotHubFileDetectorInput {
   maxFindings?: number;
 }
 
-/**
- * Hot-hub-file detector.
- *
- * Surfaces files imported by an unusually large number of other files in
- * the workspace. These "import hubs" are often:
- *   - barrel files that re-export everything from a folder,
- *   - shared utility modules that have outgrown their original scope,
- *   - dependency-graph chokepoints that any local change touches.
- *
- * INFO severity by design — being a hub is not inherently bad, but it's
- * useful to know when planning a refactor (changing the hub touches
- * everyone) or hunting build-time bottlenecks.
- */
+// Files imported by >threshold others — refactor blast-radius signal. INFO.
+//
+// TODO(under-implemented): minimal detector compared to peers. Open items:
+//   1. Threshold tuning — current 20 is a static guess. Should scale with
+//      workspace size (e.g. p95 of incoming-import distribution + bonus
+//      for files with no outgoing imports → pure leaf hubs are worst).
+//   2. Severity scaling — currently always 'low'. Bump to 'medium' at
+//      2x threshold, 'high' at 4x (a barrel re-export pulled by 100 files
+//      is a much bigger blast radius than one pulled by 21).
+//   3. Suggestion enrichment — detect barrel-export shape (file body is
+//      mostly `export { … } from './x'`) and tailor the suggestion
+//      (delete the barrel) vs utility-module shape (suggest splitting).
+//   4. Per-workspace blast-radius — in multi-workspace mode, weight by
+//      how many workspaces import the file, not just file count.
 export function detectHotHubFiles(input: HotHubFileDetectorInput): Finding[] {
   const threshold = input.threshold ?? 20;
   const maxFindings = input.maxFindings ?? 10;

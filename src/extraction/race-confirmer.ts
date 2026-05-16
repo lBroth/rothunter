@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MlxLlmClient } from '../adapters/mlx-llm.js';
+import { MlxLlmClient, createDefaultLlmClient } from '../adapters/mlx-llm.js';
 import { parseLlmJsonResponse } from '../utils/llm-json.js';
 import { logger } from '../utils/logger.js';
 
@@ -58,7 +58,7 @@ export class RaceConfirmer {
   private cache = new Map<string, RaceVerdict>();
 
   constructor(llm?: MlxLlmClient) {
-    this.llm = llm ?? new MlxLlmClient();
+    this.llm = llm ?? createDefaultLlmClient();
   }
 
   async confirm(input: RaceCheckInput): Promise<RaceVerdict | null> {

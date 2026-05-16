@@ -2,9 +2,9 @@
  * Golden ground-truth verdicts for the shared-db-write LLM confirmer.
  *
  * Each entry maps a clustered finding (identified by `<entity>.<column>`)
- * to the expected Tier-3 verdict. The eval harness scans every fixture
+ * to the expected LLM verdict. The eval harness scans every fixture
  * file under `__fixtures__/shared-db/`, runs the deterministic
- * `detectSharedDbWrites` clusterer, then runs the LLM Tier-3 confirmer
+ * `detectSharedDbWrites` clusterer, then runs the LLM confirmer
  * on each finding and compares against the expected verdict.
  *
  * DO NOT IMPORT FROM PRODUCTION CODE.

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { JSX } from 'react';
 import { ArrowUp, Check, File as FileIcon, Folder, FolderOpen, Loader2, X } from 'lucide-react';
 import { listDirectory, type FsListing } from '../lib/api.js';
 
@@ -96,9 +97,7 @@ export function DirectoryBrowser({
               <Loader2 size={14} className="animate-spin mr-2" /> loading…
             </div>
           )}
-          {err && (
-            <div className="px-4 py-6 text-high text-xs font-mono break-words">{err}</div>
-          )}
+          {err && <div className="px-4 py-6 text-high text-xs font-mono break-words">{err}</div>}
           {!loading && !err && entries.length === 0 && (
             <div className="px-4 py-12 text-center text-muted text-xs">Empty directory.</div>
           )}
@@ -117,9 +116,7 @@ export function DirectoryBrowser({
                   }}
                   className={
                     'w-full text-left px-4 py-2 flex items-center gap-2.5 text-xs font-mono ' +
-                    (e.isDir
-                      ? 'text-ink hover:bg-bg'
-                      : 'text-muted cursor-default') +
+                    (e.isDir ? 'text-ink hover:bg-bg' : 'text-muted cursor-default') +
                     (e.isHidden ? ' opacity-60' : '')
                   }
                 >

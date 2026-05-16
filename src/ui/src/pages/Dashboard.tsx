@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { JSX } from 'react';
 import { Play } from 'lucide-react';
 import type { Finding, ScanDiff, ScanRecord } from '../lib/api.js';
 import { getScan, getScanDiff, startScan } from '../lib/api.js';
@@ -58,7 +59,7 @@ export function Dashboard({
     };
   }, [scanId]);
 
-  const findings = scan?.findings ?? [];
+  const findings = useMemo(() => scan?.findings ?? [], [scan]);
   const counts = useMemo(() => countSeverities(findings), [findings]);
   const detectorRows = useMemo(() => buildDetectorBreakdown(findings), [findings]);
   const heatmap = useMemo(() => buildRepoHeatmap(findings), [findings]);
@@ -77,9 +78,7 @@ export function Dashboard({
   if (err && !scan) return <div className="text-high">error: {err}</div>;
   if (!scan) return <PageSkeleton />;
 
-  const durationS = scan.finishedAt
-    ? Math.round(((scan.finishedAt - scan.startedAt) / 1000))
-    : null;
+  const durationS = scan.finishedAt ? Math.round((scan.finishedAt - scan.startedAt) / 1000) : null;
 
   return (
     <div className="space-y-8 max-w-screen-2xl">
@@ -89,19 +88,25 @@ export function Dashboard({
         meta={
           <div className="space-y-1">
             <div>scan finished in {durationS != null ? formatDuration(durationS) : '—'}</div>
-            <div>verdicts by <span className="text-ink">qwen2.5-coder-14b</span></div>
+            <div>
+              verdicts by <span className="text-ink">qwen2.5-coder-14b</span>
+            </div>
             <RefreshDot visible={loading} />
           </div>
         }
       />
 
       <KpiStrip>
-        <KpiCell label="findings" value={counts.total} delta={diff ? diff.added.length - diff.removed.length : undefined} />
+        <KpiCell
+          label="findings"
+          value={counts.total}
+          delta={diff ? diff.added.length - diff.removed.length : undefined}
+        />
         <KpiCell label="high" value={counts.high} tone="high" delta={diffSeverity(diff, 'high')} />
         <KpiCell label="med" value={counts.med} tone="med" delta={diffSeverity(diff, 'medium')} />
         <KpiCell label="low" value={counts.low} tone="low" delta={diffSeverity(diff, 'low')} />
         <KpiCell label="symbols" value={(scan.symbolsCount ?? 0).toLocaleString('en-US')} />
-        <KpiCell label="tier-3 verdict rate" value={`${tier3Pct(findings)}%`} tone="accent" />
+        <KpiCell label="LLM verdict rate" value={`${llmVerdictPct(findings)}%`} tone="accent" />
       </KpiStrip>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -116,7 +121,11 @@ export function Dashboard({
         />
       </div>
 
-      <HighFindingsCard findings={highFindings} onOpenFinding={onOpenFinding} onViewAll={onOpenFindings} />
+      <HighFindingsCard
+        findings={highFindings}
+        onOpenFinding={onOpenFinding}
+        onViewAll={onOpenFindings}
+      />
     </div>
   );
 }
@@ -141,21 +150,21 @@ function renderSerifSentence(high: number, added: number): JSX.Element {
 function EmptyState({ onStart }: { onStart: () => Promise<void> }): JSX.Element {
   const [workspace, setWorkspace] = useState<string | null>(null);
   useEffect(() => {
-    getWorkspace().then((w) => setWorkspace(w.name ?? w.current)).catch(() => undefined);
+    getWorkspace()
+      .then((w) => setWorkspace(w.name ?? w.current))
+      .catch(() => undefined);
   }, []);
   return (
     <div className="max-w-2xl mx-auto pt-24 text-center px-4">
       <div className="text-[11px] uppercase tracking-widest text-muted font-mono mb-3">
         no scans yet
       </div>
-      <h1 className="font-serif text-4xl text-ink mb-4">
-        Catch the rot in your codebase.
-      </h1>
+      <h1 className="font-serif text-4xl text-ink mb-4">Catch the rot in your codebase.</h1>
       <p className="text-muted mb-8">
         Run the first scan against{' '}
-        <code className="font-mono text-ink break-all">{workspace ?? '…'}</code>.
-        The local LLM sidecar verdicts every Tier-3 finding before it lands here.
-        Pick a different folder from the picker in the top bar.
+        <code className="font-mono text-ink break-all">{workspace ?? '…'}</code>. The local LLM
+        sidecar verdicts every LLM-confirmed finding before it lands here. Pick a different folder from the
+        picker in the top bar.
       </p>
       <button
         onClick={() => void onStart()}
@@ -189,9 +198,27 @@ function WhatsNewCard({ diff, tab, setTab, onOpenFinding }: WhatsNewCardProps): 
         </span>
       </header>
       <div className="px-5 pt-4 grid grid-cols-3 gap-2 text-center">
-        <TabPill active={tab === 'added'} tone="high" label="ADDED" value={`+${added.length}`} onClick={() => setTab('added')} />
-        <TabPill active={tab === 'resolved'} tone="low" label="RESOLVED" value={`−${removed.length}`} onClick={() => setTab('resolved')} />
-        <TabPill active={tab === 'persisting'} tone="ink" label="PERSISTING" value={`${persisting.length}`} onClick={() => setTab('persisting')} />
+        <TabPill
+          active={tab === 'added'}
+          tone="high"
+          label="ADDED"
+          value={`+${added.length}`}
+          onClick={() => setTab('added')}
+        />
+        <TabPill
+          active={tab === 'resolved'}
+          tone="low"
+          label="RESOLVED"
+          value={`−${removed.length}`}
+          onClick={() => setTab('resolved')}
+        />
+        <TabPill
+          active={tab === 'persisting'}
+          tone="ink"
+          label="PERSISTING"
+          value={`${persisting.length}`}
+          onClick={() => setTab('persisting')}
+        />
       </div>
       <ul className="p-4 space-y-2">
         {list.length === 0 && <li className="text-xs text-muted">No items in this bucket.</li>}
@@ -202,7 +229,9 @@ function WhatsNewCard({ diff, tab, setTab, onOpenFinding }: WhatsNewCardProps): 
               onClick={() => onOpenFinding(f.fingerprint)}
               className="w-full text-left flex items-start gap-3 hover:bg-bg rounded px-2 py-1.5 text-xs"
             >
-              <span className="text-muted font-mono w-8 shrink-0">+{(i + 1).toString().padStart(2, '0')}</span>
+              <span className="text-muted font-mono w-8 shrink-0">
+                +{(i + 1).toString().padStart(2, '0')}
+              </span>
               <span className="text-high text-base leading-none mt-0.5">●</span>
               <span className="flex-1 min-w-0">
                 <span className="block truncate text-ink">{stripBackticks(f.title)}</span>
@@ -287,9 +316,27 @@ function DetectorsCard({
               onClick={() => onClickDetector(r.detectorId)}
             >
               <td className="px-5 py-1.5 font-mono text-ink">{r.detectorId}</td>
-              <td className={'text-right font-mono tabular-nums ' + (r.h > 0 ? 'text-high' : 'text-muted')}>{r.h}</td>
-              <td className={'text-right font-mono tabular-nums ' + (r.m > 0 ? 'text-med' : 'text-muted')}>{r.m}</td>
-              <td className={'text-right font-mono tabular-nums pr-5 ' + (r.l > 0 ? 'text-low' : 'text-muted')}>{r.l}</td>
+              <td
+                className={
+                  'text-right font-mono tabular-nums ' + (r.h > 0 ? 'text-high' : 'text-muted')
+                }
+              >
+                {r.h}
+              </td>
+              <td
+                className={
+                  'text-right font-mono tabular-nums ' + (r.m > 0 ? 'text-med' : 'text-muted')
+                }
+              >
+                {r.m}
+              </td>
+              <td
+                className={
+                  'text-right font-mono tabular-nums pr-5 ' + (r.l > 0 ? 'text-low' : 'text-muted')
+                }
+              >
+                {r.l}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -334,7 +381,9 @@ function HotspotsCard({
                     <div className="h-1 bg-high/70" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
-                <span className="text-xs font-mono text-high tabular-nums w-6 text-right">{r.count}</span>
+                <span className="text-xs font-mono text-high tabular-nums w-6 text-right">
+                  {r.count}
+                </span>
               </button>
             </li>
           );
@@ -458,7 +507,7 @@ function topLevelDir(file: string): string {
   return `${parts[0]}/${parts[1]}`;
 }
 
-function tier3Pct(findings: Finding[]): number {
+function llmVerdictPct(findings: Finding[]): number {
   if (findings.length === 0) return 0;
   const t = findings.filter((f) => f.layer === 3).length;
   return Math.round((t / findings.length) * 100);
@@ -481,9 +530,27 @@ function formatDuration(s: number): string {
 }
 
 const WORDS = [
-  'Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
-  'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
-  'Seventeen', 'Eighteen', 'Nineteen', 'Twenty',
+  'Zero',
+  'One',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Eleven',
+  'Twelve',
+  'Thirteen',
+  'Fourteen',
+  'Fifteen',
+  'Sixteen',
+  'Seventeen',
+  'Eighteen',
+  'Nineteen',
+  'Twenty',
 ];
 
 function numberWord(n: number, lower = false): string {

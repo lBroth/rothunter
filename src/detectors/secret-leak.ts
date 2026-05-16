@@ -1,45 +1,25 @@
 import * as crypto from 'node:crypto';
-import * as path from 'node:path';
-import { readFileSync } from 'node:fs';
+import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
+import { makeSourceReader } from '../utils/source-reader.js';
 
 export interface SecretLeakDetectorInput {
   workspaceRoot: string;
   files: ReadonlyArray<string>;
+  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
+  project?: Project;
 }
 
-/**
- * Secret-leak detector.
- *
- * Regex pass for committed credentials / hardcoded local URLs. Each
- * pattern is high-precision enough to flag at HIGH and let the user
- * snooze legitimate cases (test fixtures, demo configs).
- *
- * Patterns:
- *   - AWS access key  (AKIA + 16 base32 chars)
- *   - AWS secret key  (40 base64 chars after literal "AWS_SECRET")
- *   - GitHub token    (ghp_ / gho_ / ghs_ / ghr_ + 36+ chars)
- *   - OpenAI key      (sk-proj-… or sk-… + 20+ chars)
- *   - Anthropic key   (sk-ant-… + 90+ chars)
- *   - Slack token     (xoxb-/xoxa-/xoxp- + …)
- *   - Stripe live key (sk_live_ + 24+ chars)
- *   - Generic         "password" / "passwd" / "secret" / "token" / "api_key" = "..."
- *   - localhost URLs  http://localhost / http://127.0.0.1 / http://0.0.0.0
- *
- * Test fixtures (under __tests__/__fixtures__/spec/) + .env.example are
- * excluded so demo material doesn't drown out real leaks.
- */
+// Regex pass for committed credentials + localhost URLs. AWS/GitHub/
+// OpenAI/Anthropic/Slack/Stripe/PEM/generic-secret-assignment + localhost.
+// Skips fixtures + .env.example.
 export function detectSecretLeaks(input: SecretLeakDetectorInput): Finding[] {
+  const read = makeSourceReader(input.workspaceRoot, input.project);
   const findings: Finding[] = [];
   for (const rel of input.files) {
     if (!isAnalysable(rel)) continue;
-    const abs = path.resolve(input.workspaceRoot, rel);
-    let raw: string;
-    try {
-      raw = readFileSync(abs, 'utf-8');
-    } catch {
-      continue;
-    }
+    const raw = read(rel);
+    if (raw == null) continue;
     findings.push(...analyseFile(rel, raw));
   }
   return findings;
@@ -69,18 +49,22 @@ const PATTERNS: PatternDef[] = [
     suggestion: 'Revoke the token on github.com, regenerate, and load it via process.env.',
   },
   {
-    name: 'openai-key',
-    re: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g,
-    severity: 'high',
-    blurb: 'OpenAI API key (sk-…) committed to source.',
-    suggestion: 'Rotate the key, load via process.env.OPENAI_API_KEY, and add it to .gitignore-tracked .env.local.',
-  },
-  {
+    // Anthropic comes first so the longer `sk-ant-…` prefix wins over the
+    // generic openai pattern below. The openai regex's negative
+    // lookahead `(?!ant-)` is the belt-and-braces guard.
     name: 'anthropic-key',
     re: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g,
     severity: 'high',
     blurb: 'Anthropic API key (sk-ant-…) committed to source.',
     suggestion: 'Rotate the key in console.anthropic.com and load via process.env.ANTHROPIC_API_KEY.',
+  },
+  {
+    name: 'openai-key',
+    re: /\bsk-(?!ant-)(?:proj-)?[A-Za-z0-9_-]{20,}\b/g,
+    severity: 'high',
+    blurb: 'OpenAI API key (sk-…) committed to source.',
+    suggestion:
+      'Rotate the key, load via process.env.OPENAI_API_KEY, and add it to .gitignore-tracked .env.local.',
   },
   {
     name: 'slack-token',
@@ -102,6 +86,34 @@ const PATTERNS: PatternDef[] = [
     severity: 'high',
     blurb: 'PEM-encoded private key embedded in source.',
     suggestion: 'Move the key to a secret manager + KMS; never commit private keys to the repo.',
+  },
+  {
+    name: 'gcp-service-account',
+    re: /"type"\s*:\s*"service_account"[\s\S]{0,200}?"private_key"\s*:\s*"-----BEGIN/g,
+    severity: 'high',
+    blurb: 'Google Cloud service-account JSON (with private_key) embedded in source.',
+    suggestion: 'Move to Secret Manager / Workload Identity; never commit service-account JSON.',
+  },
+  {
+    name: 'azure-sas-token',
+    re: /\bsig=[A-Za-z0-9%+/=]{20,}&se=\d{4}-\d{2}-\d{2}/g,
+    severity: 'high',
+    blurb: 'Azure SAS token (sig=…&se=…) committed to source.',
+    suggestion: 'Revoke / regenerate the SAS, store the connection string in Key Vault, load at runtime.',
+  },
+  {
+    name: 'twilio-account-sid',
+    re: /\bAC[a-f0-9]{32}\b/g,
+    severity: 'medium',
+    blurb: 'Twilio Account SID (AC…) committed to source. Treated as a credential when paired with the auth token.',
+    suggestion: 'Move both SID and auth token to process.env / a secret manager.',
+  },
+  {
+    name: 'database-dsn-with-password',
+    re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|rediss):\/\/[^\s:@/]+:[^\s@/]{4,}@[^\s/]+/gi,
+    severity: 'high',
+    blurb: 'Database connection string with inline username:password committed to source.',
+    suggestion: 'Move to process.env / a secret manager; never commit DSN credentials.',
   },
   {
     name: 'generic-secret-assignment',
@@ -164,6 +176,14 @@ function labelFor(p: PatternDef): string {
       return 'Stripe LIVE key';
     case 'private-key-pem':
       return 'PEM private key';
+    case 'gcp-service-account':
+      return 'GCP service-account JSON';
+    case 'azure-sas-token':
+      return 'Azure SAS token';
+    case 'twilio-account-sid':
+      return 'Twilio Account SID';
+    case 'database-dsn-with-password':
+      return 'Database DSN with password';
     case 'generic-secret-assignment':
       return 'Hardcoded credential';
     case 'localhost-url':

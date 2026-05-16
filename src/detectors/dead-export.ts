@@ -12,41 +12,10 @@ export interface DeadExportDetectorInput {
   entryPoints: ReadonlySet<string>;
 }
 
-/**
- * Detector for exports that nothing else in the workspace consumes.
- *
- * Inputs:
- *   - workspace symbols, each with its file + `exported` flag
- *   - all import + re-export edges captured by the parser
- *   - the entry-point set (entry files are considered "consumed by the outside
- *     world" — their exports are protected so we don't false-positive on the
- *     CLI surface).
- *
- * What counts as "consumed":
- *   - A named import that mentions the symbol's name and resolves to the
- *     symbol's file.
- *   - A `default` import resolving to the file, IF the symbol is the file's
- *     default export. (We don't track default-export identities yet — covered
- *     by a defensive fallback: any default import marks the file's exports
- *     as having default-bound consumption, but does NOT cover named exports.)
- *   - Any namespace alias import (`import * as ns from './x'`) — assumed to
- *     consume every export of the target (can't statically tell which names
- *     `ns.*` will end up touching).
- *   - Any `export * from './x'` re-export — same rationale: every export of
- *     the target propagates and could be consumed downstream.
- *   - A named re-export (`export { foo } from './x'`) — consumes `foo` in
- *     the target.
- *
- * What is NOT yet supported (documented limitations, not silent gaps):
- *   - Default-export name tracking — if you have `export default function bar`,
- *     `bar` is not currently tied to the default-import edge.
- *   - Dynamic imports (`await import('./x')`) — invisible to the static parser.
- *   - String-eval'd module IDs — also invisible.
- *
- * False-positive control: we flag at severity `low` and confidence 0.65 so the
- * humans-in-the-loop snooze flow (`.rothunterignore`) absorbs the unavoidable
- * tail of framework conventions / dynamic loads.
- */
+// Flag exports nothing imports. Consumed = named import, `* as ns`, `export *`,
+// re-export, OR default import IFF the symbol is the file's `isDefault`.
+// Dynamic / string-eval'd imports invisible. Severity low, confidence 0.65 —
+// snooze via .rothunterignore for framework conventions.
 export function detectDeadExports(input: DeadExportDetectorInput): Finding[] {
   const consumedNames = new Map<string, Set<string>>();
   const namespaceConsumedFiles = new Set<string>();
@@ -74,10 +43,12 @@ export function detectDeadExports(input: DeadExportDetectorInput): Finding[] {
     if (namespaceConsumedFiles.has(sym.file)) continue;
     const consumed = consumedNames.get(sym.file);
     if (consumed && consumed.has(sym.name)) continue;
-    // Conservative default-import gate: if anyone imports default from the
-    // file, we don't currently know which symbol is `default`, so don't flag
-    // the file's exports as dead.
-    if (defaultConsumedFiles.has(sym.file)) continue;
+    // Default-import gate: only protect the symbol that IS the file's
+    // default. Other named exports in the same file remain subject to
+    // dead-export. The parser tags `isDefault` on the symbol; absent
+    // that tag the symbol is NOT the default, so leave the rest of the
+    // file's named exports open to the check.
+    if (defaultConsumedFiles.has(sym.file) && sym.isDefault) continue;
 
     findings.push({
       detectorId: 'dead-export',

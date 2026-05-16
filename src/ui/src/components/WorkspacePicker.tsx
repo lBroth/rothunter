@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { JSX } from 'react';
 import { ChevronDown, Folder, FolderOpen, Loader2 } from 'lucide-react';
 import { getWorkspace, setWorkspace, type WorkspaceState } from '../lib/api.js';
 import { DirectoryBrowser } from './DirectoryBrowser.js';
@@ -20,7 +21,9 @@ export function WorkspacePicker(): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getWorkspace().then(setState).catch(() => undefined);
+    getWorkspace()
+      .then(setState)
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -63,8 +66,12 @@ export function WorkspacePicker(): JSX.Element {
       {open && (
         <div className="absolute left-0 mt-1 z-40 w-[min(22rem,calc(100vw-1.5rem))] rounded-md border border-border bg-panel shadow-lg overflow-hidden">
           <div className="px-3 py-2 border-b border-border-soft">
-            <div className="text-[10px] uppercase tracking-widest text-muted font-mono">current</div>
-            <div className="text-xs font-mono text-ink break-all mt-0.5">{state?.current ?? '—'}</div>
+            <div className="text-[10px] uppercase tracking-widest text-muted font-mono">
+              current
+            </div>
+            <div className="text-xs font-mono text-ink break-all mt-0.5">
+              {state?.current ?? '—'}
+            </div>
           </div>
 
           {recent.length > 0 && (
@@ -105,9 +112,7 @@ export function WorkspacePicker(): JSX.Element {
           </div>
 
           {err && (
-            <div className="px-3 pb-2 text-[11px] text-high font-mono break-words">
-              {err}
-            </div>
+            <div className="px-3 pb-2 text-[11px] text-high font-mono break-words">{err}</div>
           )}
         </div>
       )}

@@ -15,30 +15,9 @@ export interface SameNameEvolutionDetectorInput {
   ignoreNames?: ReadonlySet<string>;
 }
 
-/**
- * Same-name-evolution detector.
- *
- * Premise: two (or more) functions with the same name living in
- * different files where one was last touched significantly later than
- * the other are typically not "accidental duplicates" but **evolutions**
- * — somebody fixed the bug, added a feature, or simplified the logic in
- * one copy and forgot to back-port the change to the others.
- *
- * Pipeline:
- *   1. Group function symbols by `name`
- *   2. For each group with ≥ 2 entries, look up the per-file last-commit
- *      date via `git log --format=%ct -n 1 -- <file>`
- *   3. If the newest and the oldest copy are more than `minDayGap` days
- *      apart, emit a MED finding citing both file:line locations and
- *      suggesting consolidation into a shared module (or an npm package
- *      when the evolution gap is large + the function is exported).
- *
- * Different from `duplicate-function`: that detector hashes BODIES and
- * fires only when bodies are byte-identical (after normalisation). This
- * one fires on NAME equivalence regardless of body — so it surfaces
- * cases where the two copies have already diverged and the divergence
- * itself is the smell.
- */
+// Same-name functions in different files, last-commit-date gap > minDayGap.
+// Catches back-port-forgotten evolutions where duplicate-function (body hash)
+// no longer fires because the copies have already diverged.
 export function detectSameNameEvolution(input: SameNameEvolutionDetectorInput): Finding[] {
   const minDayGap = input.minDayGap ?? 30;
   const minLines = input.minLines ?? 3;

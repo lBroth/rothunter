@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { JSX } from 'react';
 import { Check, Circle, Loader2, X } from 'lucide-react';
 import type { ScanSseEvent } from '../lib/api.js';
 import { cancelScan, subscribeScan } from '../lib/api.js';
@@ -53,7 +54,7 @@ const DETECTOR_BLURB: Record<string, string> = {
   'dead-module': 'module reachability',
   'dead-export': 'export reachability',
   'dead-handler': 'IaC entry resolution',
-  'mutation': 'shared-state mutation surfaces',
+  mutation: 'shared-state mutation surfaces',
   'race-condition': 'read-modify-write across await',
   'shared-db-write': 'column-write graph',
   'api-race': 'route-table races',
@@ -151,12 +152,11 @@ export function ScanRunning({ scanId, onDone }: ScanRunningProps): JSX.Element {
           : parsedPct;
 
   const avgVerdictMs =
-    verdicts.length > 0
-      ? verdicts.reduce((a, v) => a + v.latencyMs, 0) / verdicts.length
-      : 1500;
+    verdicts.length > 0 ? verdicts.reduce((a, v) => a + v.latencyMs, 0) / verdicts.length : 1500;
   const verdictsLeft = Math.max(0, llmTotal - llmDone);
   const etaSec = Math.round((verdictsLeft * avgVerdictMs) / 1000);
-  const doneCount = doneDetectors.size + (activeDetector && doneDetectors.has(activeDetector) ? 0 : 0);
+  const doneCount =
+    doneDetectors.size + (activeDetector && doneDetectors.has(activeDetector) ? 0 : 0);
 
   return (
     <div className="space-y-6 max-w-screen-2xl">
@@ -165,14 +165,20 @@ export function ScanRunning({ scanId, onDone }: ScanRunningProps): JSX.Element {
         title={
           <span>
             <span className="text-ink">Looking through {summariseWorkspace()}</span>{' '}
-            <span className="text-muted">— {doneCount} of {DETECTOR_ORDER.length} detectors done.</span>
+            <span className="text-muted">
+              — {doneCount} of {DETECTOR_ORDER.length} detectors done.
+            </span>
           </span>
         }
         meta={
           <div className="flex items-start gap-3 flex-wrap sm:justify-end">
             <div className="space-y-1">
-              <div>scan <span className="text-ink">#{scanId.slice(0, 12)}</span></div>
-              <div>commit <span className="text-ink">—</span></div>
+              <div>
+                scan <span className="text-ink">#{scanId.slice(0, 12)}</span>
+              </div>
+              <div>
+                commit <span className="text-ink">—</span>
+              </div>
               {sseStatus === 'reconnecting' && (
                 <div className="text-med inline-flex items-center gap-1.5">
                   <Loader2 size={10} className="animate-spin" /> reconnecting…
@@ -194,12 +200,26 @@ export function ScanRunning({ scanId, onDone }: ScanRunningProps): JSX.Element {
       />
 
       <KpiRow>
-        <KpiCellLive label="elapsed" value={formatMin(elapsed)} sub={verdictsLeft > 0 ? `eta ${formatMin(etaSec)}` : null} progress={overallPct} />
+        <KpiCellLive
+          label="elapsed"
+          value={formatMin(elapsed)}
+          sub={verdictsLeft > 0 ? `eta ${formatMin(etaSec)}` : null}
+          progress={overallPct}
+        />
         <KpiCellLive label="prog" value={`${overallPct.toFixed(0)}%`} />
-        <KpiCellLive label="files" value={files != null ? `${files.toLocaleString('en-US')}` : '—'} />
-        <KpiCellLive label="symbols" value={symbols != null ? symbols.toLocaleString('en-US') : '—'} />
-        <KpiCellLive label="tier-3" value={`${llmDone} / ${llmTotal || '—'}`} />
-        <KpiCellLive label="avg llm" value={verdicts.length > 0 ? `${Math.round(avgVerdictMs)} ms` : '—'} />
+        <KpiCellLive
+          label="files"
+          value={files != null ? `${files.toLocaleString('en-US')}` : '—'}
+        />
+        <KpiCellLive
+          label="symbols"
+          value={symbols != null ? symbols.toLocaleString('en-US') : '—'}
+        />
+        <KpiCellLive label="LLM" value={`${llmDone} / ${llmTotal || '—'}`} />
+        <KpiCellLive
+          label="avg llm"
+          value={verdicts.length > 0 ? `${Math.round(avgVerdictMs)} ms` : '—'}
+        />
         <KpiCellLive label="state" value={renderStateLabel(latest?.state)} />
       </KpiRow>
 
@@ -296,23 +316,36 @@ function DetectorPipelineCard({
             <li
               key={d}
               className={
-                'flex items-center gap-3 px-5 py-2.5 ' +
-                (status === 'live' ? 'bg-accent/5' : '')
+                'flex items-center gap-3 px-5 py-2.5 ' + (status === 'live' ? 'bg-accent/5' : '')
               }
             >
               <StatusDot status={status} />
               <div className="flex-1 min-w-0">
-                <div className={'font-mono text-sm ' + (status === 'queued' ? 'text-muted' : 'text-ink')}>
+                <div
+                  className={
+                    'font-mono text-sm ' + (status === 'queued' ? 'text-muted' : 'text-ink')
+                  }
+                >
                   {d}
                 </div>
                 <div className="text-[11px] text-muted font-mono truncate">
                   {DETECTOR_BLURB[d] ?? ''}
                 </div>
               </div>
-              <span className={'text-xs font-mono tabular-nums w-8 text-right ' + (races > 0 ? 'text-high' : 'text-muted')}>
+              <span
+                className={
+                  'text-xs font-mono tabular-nums w-8 text-right ' +
+                  (races > 0 ? 'text-high' : 'text-muted')
+                }
+              >
                 {races}
               </span>
-              <span className={'text-xs font-mono tabular-nums w-8 text-right ' + (safes > 0 ? 'text-low' : 'text-muted')}>
+              <span
+                className={
+                  'text-xs font-mono tabular-nums w-8 text-right ' +
+                  (safes > 0 ? 'text-low' : 'text-muted')
+                }
+              >
                 {safes}
               </span>
               <span
@@ -361,10 +394,8 @@ function VerdictStreamCard({ verdicts }: { verdicts: VerdictEntry[] }): JSX.Elem
   return (
     <section className="rounded-lg border border-border bg-panel overflow-hidden">
       <header className="px-5 py-3 border-b border-border-soft flex items-baseline gap-3">
-        <span className="text-sm font-semibold text-ink">Tier-3 verdict stream</span>
-        <span className="text-xs text-muted font-mono">
-          qwen2.5-coder-14b · llama.cpp
-        </span>
+        <span className="text-sm font-semibold text-ink">LLM verdict stream</span>
+        <span className="text-xs text-muted font-mono">qwen2.5-coder-14b · llama.cpp</span>
         <span className="ml-auto text-xs text-muted font-mono">{verdicts.length}</span>
       </header>
       <table className="w-full text-xs">
@@ -384,10 +415,7 @@ function VerdictStreamCard({ verdicts }: { verdicts: VerdictEntry[] }): JSX.Elem
             </tr>
           )}
           {verdicts.map((v, i) => (
-            <tr
-              key={`${v.ts}-${i}`}
-              className="border-t border-border-soft"
-            >
+            <tr key={`${v.ts}-${i}`} className="border-t border-border-soft">
               <td className="px-5 py-2 font-mono text-[11px] text-muted tabular-nums">
                 +{formatLatency(v.latencyMs)}
               </td>
@@ -405,13 +433,9 @@ function VerdictStreamCard({ verdicts }: { verdicts: VerdictEntry[] }): JSX.Elem
                 </span>
               </td>
               <td className="py-2 pr-5">
-                <div className="font-mono text-xs text-ink truncate">
-                  {v.detectorId}
-                </div>
+                <div className="font-mono text-xs text-ink truncate">{v.detectorId}</div>
                 {v.cluster && (
-                  <div className="font-mono text-[11px] text-info truncate">
-                    §{v.cluster}
-                  </div>
+                  <div className="font-mono text-[11px] text-info truncate">§{v.cluster}</div>
                 )}
               </td>
             </tr>

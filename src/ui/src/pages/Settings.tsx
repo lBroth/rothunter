@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { JSX } from 'react';
 import { Check, CircleDashed, Cpu, Loader2, X } from 'lucide-react';
 import {
   getSettings,
@@ -20,12 +21,12 @@ const DETECTOR_BLURB: Record<string, string> = {
     'Named exports nobody imports. Candidates for deletion or for downgrading to a file-local declaration.',
   'dead-handler':
     'Handlers declared in IaC (Serverless / SST / CDK / Lambda) whose `handler:` path does not resolve to a real exported function.',
-  'mutation':
+  mutation:
     'Shared-state mutation surfaces (rate-limiters, in-memory caches, singleton config) that get written from multiple sites — the foundation race-condition / api-race look at.',
   'race-condition':
-    'Read-modify-write sequences crossing an `await` boundary on a shared resource. Tier-3 LLM confirms each candidate.',
+    'Read-modify-write sequences crossing an `await` boundary on a shared resource. LLM confirms each candidate.',
   'shared-db-write':
-    'Two or more code paths writing the same database column without coordination. Tier-3 LLM filters trivial cases.',
+    'Two or more code paths writing the same database column without coordination. LLM filters trivial cases.',
   'api-race':
     'Two routes mutating the same key/resource without a lock or transactional boundary. Race-window snippet emitted to the dashboard.',
   'bad-config':
@@ -66,7 +67,9 @@ export function Settings(): JSX.Element {
   const [saving, setSaving] = useState<boolean>(false);
 
   useEffect(() => {
-    getSettings().then(setSettings).catch((e: Error) => setErr(e.message));
+    getSettings()
+      .then(setSettings)
+      .catch((e: Error) => setErr(e.message));
     void runLlmProbe();
   }, []);
 
@@ -79,7 +82,11 @@ export function Settings(): JSX.Element {
     }
   };
 
-  const save = async (patch: { detectors?: Record<string, boolean>; minConfidence?: number; llmConcurrency?: number }): Promise<void> => {
+  const save = async (patch: {
+    detectors?: Record<string, boolean>;
+    minConfidence?: number;
+    llmConcurrency?: number;
+  }): Promise<void> => {
     if (!settings) return;
     setSaving(true);
     try {
@@ -128,7 +135,7 @@ export function Settings(): JSX.Element {
     <div className="space-y-6 max-w-screen-lg">
       <SectionHeader
         eyebrow="SETTINGS · IN-PROCESS · NO DAEMON RESTART"
-        title={<span className="text-ink">Workspace, detectors, Tier-3 model.</span>}
+        title={<span className="text-ink">Workspace, detectors, LLM.</span>}
         meta={
           saving ? (
             <span className="text-xs font-mono text-muted inline-flex items-center gap-1.5">
@@ -213,7 +220,9 @@ export function Settings(): JSX.Element {
         {settings?.comingSoon && settings.comingSoon.length > 0 && (
           <div className="border-t border-border-soft">
             <header className="px-5 py-2.5 flex items-baseline gap-2 bg-bg/40">
-              <span className="text-[10px] uppercase tracking-widest text-muted font-mono">coming soon</span>
+              <span className="text-[10px] uppercase tracking-widest text-muted font-mono">
+                coming soon
+              </span>
             </header>
             <ul className="divide-y divide-border-soft">
               {settings.comingSoon.map((c) => (
@@ -234,15 +243,16 @@ export function Settings(): JSX.Element {
         )}
       </section>
 
-      {/* Tier-3 LLM */}
+      {/* LLM */}
       <section className="rounded-lg border border-border bg-panel overflow-hidden">
         <header className="px-5 py-3 border-b border-border-soft flex items-baseline gap-3 flex-wrap">
           <Cpu size={14} className="text-accent self-center" />
-          <span className="text-sm font-semibold text-ink">Tier-3 model</span>
+          <span className="text-sm font-semibold text-ink">LLM</span>
           <span className="text-xs text-muted font-mono">local llama.cpp sidecar</span>
           {settings?.hardware && (
             <span className="text-[10px] text-muted font-mono">
-              · host {settings.hardware.cpuCores}c / {Math.round(settings.hardware.totalMemMb / 1024)}GB
+              · host {settings.hardware.cpuCores}c /{' '}
+              {Math.round(settings.hardware.totalMemMb / 1024)}GB
             </span>
           )}
           <span className="ml-auto inline-flex items-center gap-1.5 text-xs font-mono">
@@ -317,18 +327,22 @@ export function Settings(): JSX.Element {
             </div>
             <div className="mt-3 rounded border border-border-soft bg-bg px-3 py-2 text-[11px] text-muted font-mono leading-relaxed">
               Set to match the LLM backend's batching capacity:
-              <br />· <span className="text-ink">llama.cpp</span> — run with `--parallel N -cb` and pick the same N here.
-              <br />· <span className="text-ink">vLLM (CUDA)</span> — dynamic batching is on by default, 4–16 is safe.
-              <br />· <span className="text-ink">mlx_lm.server</span> — serialises internally; keep at 1.
-              <br />Auto-tuned to half the CPU cores on first boot.
+              <br />· <span className="text-ink">llama.cpp</span> — run with `--parallel N -cb` and
+              pick the same N here.
+              <br />· <span className="text-ink">vLLM (CUDA)</span> — dynamic batching is on by
+              default, 4–16 is safe.
+              <br />· <span className="text-ink">mlx_lm.server</span> — serialises internally; keep
+              at 1.
+              <br />
+              Auto-tuned to half the CPU cores on first boot.
             </div>
           </div>
         )}
         <div className="px-5 pb-4">
           <div className="rounded border border-border-soft bg-bg px-3 py-2 text-[11px] text-muted font-mono">
             endpoint + model are env-driven for now (`ROTHUNTER_LLM_BASE_URL`,
-            `ROTHUNTER_LLM_MODEL`). Changing them requires a server restart.
-            In-process switching is on the v0.5 roadmap.
+            `ROTHUNTER_LLM_MODEL`). Changing them requires a server restart. In-process switching is
+            on the v0.5 roadmap.
           </div>
         </div>
       </section>

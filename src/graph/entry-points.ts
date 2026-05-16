@@ -1,21 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-/**
- * Heuristic entry-point detection for a TypeScript workspace.
- *
- * Combines:
- *   - `package.json` fields: `main`, `module`, `bin`, `exports`
- *   - Conventional filename heuristics: `index.ts`, `main.ts`, `cli.ts`,
- *     anything under `scripts/` or `bin/`
- *   - Test files (Jest / Vitest convention) — '*.test.ts', '*.spec.ts',
- *     anything under '__tests__/'
- *   - Framework conventions: Next.js `pages/`, `app/`, route handlers;
- *     SvelteKit `routes/`; Astro `src/pages/`.
- *
- * Returns workspace-relative POSIX paths. Caller is responsible for
- * filtering to files that actually exist in the parsed set.
- */
+// Entry-point heuristics: package.json main/module/bin/exports, conventional
+// filenames (index/main/cli, scripts/, bin/), tests, framework routes (Next,
+// SvelteKit, Astro). Workspace-relative POSIX paths.
 export function discoverEntryPoints(workspaceRoot: string, knownFiles: ReadonlySet<string>): Set<string> {
   const entries = new Set<string>();
   addPackageJsonEntries(workspaceRoot, entries);

@@ -1,20 +1,14 @@
-/**
- * Tiny history-API binding for the SPA. Every route maps to a URL path
- * so the browser back / forward buttons work naturally and the URL is
- * shareable. Server side, every path falls through to index.html (Vite
- * handles SPA fallback in dev; in prod Fastify serves index.html from
- * @fastify/static and unmatched routes 404 — see the
- * static-fallback fix in src/rothunter/server/index.ts).
- */
+// SPA route ↔ URL binding. Non-/api/* paths fall through to index.html
+// (Vite in dev, @fastify/static in prod).
 import { useEffect, useState } from 'react';
 import type { Route } from './route.js';
 
 const PATHS = {
-  dashboard:  '/',
-  findings:   '/findings',
-  history:    '/history',
-  symbols:    '/symbols',
-  settings:   '/settings',
+  dashboard: '/',
+  findings: '/findings',
+  history: '/history',
+  symbols: '/symbols',
+  settings: '/settings',
 } as const;
 
 export function routeToPath(route: Route): string {
@@ -64,7 +58,8 @@ export function pathToRoute(path: string): Route {
   const finding = /^\/finding\/(.+)$/.exec(path);
   if (finding) return { name: 'finding', fingerprint: decodeURIComponent(finding[1]!) };
   const scanFindings = /^\/scan\/([^/]+)\/findings$/.exec(path);
-  if (scanFindings) return { name: 'findings', scanId: decodeURIComponent(scanFindings[1]!), detector, directory };
+  if (scanFindings)
+    return { name: 'findings', scanId: decodeURIComponent(scanFindings[1]!), detector, directory };
   const running = /^\/scan\/(.+)$/.exec(path);
   if (running) return { name: 'running', scanId: decodeURIComponent(running[1]!) };
   return { name: 'dashboard' };

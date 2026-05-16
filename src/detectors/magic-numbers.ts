@@ -1,7 +1,7 @@
 import * as crypto from 'node:crypto';
-import * as path from 'node:path';
-import { readFileSync } from 'node:fs';
+import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
+import { makeSourceReader } from '../utils/source-reader.js';
 
 export interface MagicNumbersDetectorInput {
   workspaceRoot: string;
@@ -10,34 +10,21 @@ export interface MagicNumbersDetectorInput {
   whitelist?: ReadonlySet<number>;
   /** Per-file finding cap so a single noisy file doesn't dominate the report. Default 5. */
   perFileCap?: number;
+  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
+  project?: Project;
 }
 
-/**
- * Magic-numbers detector.
- *
- * Flags numeric literals that:
- *   - aren't in the whitelist (`0`, `1`, `-1`, `2`, `10`, `100`, `1000`)
- *   - aren't simple array indices / for-loop bounds (heuristic: literal
- *     follows `[` or appears in `for (let i = 0; i < N; i++)` patterns)
- *   - aren't inside an obvious time / size constant context already
- *     (we look at the surrounding identifier — if it's already
- *     `TIMEOUT_MS`, the value is being declared, not magic)
- *
- * LOW severity; capped per file so it doesn't dominate dashboards.
- */
+// Numeric literals outside the whitelist {0,1,-1,2,10,100,1000}. Skip
+// array indices, for-loop bounds, named-const declarations. LOW, per-file cap.
 export function detectMagicNumbers(input: MagicNumbersDetectorInput): Finding[] {
   const whitelist = input.whitelist ?? DEFAULT_WHITELIST;
   const cap = input.perFileCap ?? 5;
+  const read = makeSourceReader(input.workspaceRoot, input.project);
   const findings: Finding[] = [];
   for (const rel of input.files) {
     if (!isAnalysable(rel)) continue;
-    const abs = path.resolve(input.workspaceRoot, rel);
-    let raw: string;
-    try {
-      raw = readFileSync(abs, 'utf-8');
-    } catch {
-      continue;
-    }
+    const raw = read(rel);
+    if (raw == null) continue;
     findings.push(...analyseFile(rel, raw, whitelist, cap));
   }
   return findings;
@@ -53,19 +40,25 @@ function analyseFile(file: string, raw: string, whitelist: ReadonlySet<number>, 
   const masked = maskStringsAndComments(raw);
   for (const m of masked.matchAll(NUM_RE)) {
     if (out.length >= cap) break;
-    const value = parseFloat(m[1]!);
-    if (whitelist.has(value)) continue;
-    if (whitelist.has(-value)) continue;
-    // Skip if the literal is being assigned to a constant (declaration site).
+    const positive = parseFloat(m[1]!);
     const before = masked.slice(Math.max(0, m.index! - 30), m.index!);
-    if (/\b(?:const|let|var|enum|readonly)\s+[A-Z_][A-Z0-9_]*\s*[:=]\s*$/.test(before)) continue;
-    if (/\b(?:const|let|var)\s+\w+\s*[:=]\s*$/.test(before)) continue;
+    // Distinguish UNARY minus (`-3`, `[-3]`, `f(-3)`, `return -3`) from
+    // BINARY subtraction (`x - 3`). Unary triggers when the char before
+    // the `-` is start-of-string, opening punctuation, a comma, an
+    // operator/comparison, or a `:=` assignment. Identifier or closing-
+    // bracket before `-` means subtraction → keep the value positive.
+    const unaryMinus = /(?:^|[=([{,;:?+\-*/%&|^!<>~]|\b(?:return|typeof|in|of|case|delete|void|throw|yield|await|new)\b)\s*-\s*$/.test(before);
+    const value = unaryMinus ? -positive : positive;
+    if (whitelist.has(value)) continue;
+    // Skip if the literal is being assigned to a constant (declaration site).
+    if (/\b(?:const|let|var|enum|readonly)\s+[A-Z_][A-Z0-9_]*\s*[:=]\s*-?\s*$/.test(before)) continue;
+    if (/\b(?:const|let|var)\s+\w+\s*[:=]\s*-?\s*$/.test(before)) continue;
     // Skip array indices (preceded by `[`).
-    if (/\[\s*$/.test(before)) continue;
+    if (/\[\s*-?\s*$/.test(before)) continue;
     // Skip enum members.
-    if (/=\s*$/.test(before) && /\benum\b/.test(masked.slice(Math.max(0, m.index! - 200), m.index!))) continue;
-    // Skip exponents / decimals (e.g. 1e-3 — the `3` should not be flagged).
-    if (/e-?$/i.test(before)) continue;
+    if (/=\s*-?\s*$/.test(before) && /\benum\b/.test(masked.slice(Math.max(0, m.index! - 200), m.index!))) continue;
+    // Skip exponents (e.g. 1e-3 or 1e+3 — the `3` should not be flagged).
+    if (/e[+-]?$/i.test(before)) continue;
     const line = lineOf(raw, m.index!);
     out.push({
       detectorId: 'magic-numbers',
@@ -161,7 +154,12 @@ function isAnalysable(file: string): boolean {
     && !/(?:^|\/)tests?\//.test(posix)
     && !/(?:^|\/)scripts?\//.test(posix)
     && !/\.test\.(?:ts|tsx)$/.test(posix)
-    && !/\.spec\.(?:ts|tsx)$/.test(posix);
+    && !/\.spec\.(?:ts|tsx)$/.test(posix)
+    // Tool config files are mostly threshold / timeout / port numbers
+    // by design — flagging every coverage threshold + chunk-size limit
+    // as a magic number is noise. Skip the common tooling configs.
+    && !/(?:^|\/)(?:vite|vitest|jest|rollup|webpack|esbuild|tsup|playwright|cypress|drizzle|next|nuxt|astro|svelte|remix|tailwind|postcss|prettier|eslint|biome|babel|rome|tsdown|tsconfig\.[^/]*)\.config\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/.test(posix)
+    && !/(?:^|\/)\.?(?:eslint|prettier|stylelint)rc(?:\.[^/]+)?$/.test(posix);
 }
 
 function lineOf(raw: string, idx: number): number {

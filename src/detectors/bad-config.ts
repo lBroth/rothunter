@@ -10,34 +10,9 @@ export interface BadConfigDetectorInput {
   files: ReadonlyArray<string>;
 }
 
-/**
- * Lint-config quality detector.
- *
- * Walks every `tsconfig*.json`, `eslint.config.*` / `.eslintrc*`, and
- * `biome.json` in the workspace and flags anti-patterns that defeat the
- * type-checker / linter:
- *
- *   tsconfig
- *     - missing strict family (strict:false, noImplicitAny:false, strictNullChecks:false)
- *     - allowJs:true without checkJs:true (untyped JS imports)
- *     - noImplicitReturns / noFallthroughCasesInSwitch / noUnusedLocals off
- *     - noUncheckedIndexedAccess off (array[i] silently `T`, not `T | undefined`)
- *     - skipLibCheck:true on library projects (info-only on apps)
- *     - target:ES3 / ES5 in 2026
- *
- *   eslint
- *     - @typescript-eslint/no-explicit-any off
- *     - @typescript-eslint/no-non-null-assertion off
- *     - @typescript-eslint/no-unused-vars off (lets dead vars rot)
- *     - eqeqeq off
- *
- *   biome
- *     - linter.rules.suspicious.noExplicitAny off
- *     - linter.rules.style.noNonNullAssertion off
- *
- * Each finding cites the exact JSON key path so the user can jump to the
- * offending line in their editor.
- */
+// Flags anti-patterns in tsconfig*.json, eslint config, biome.json:
+// disabled strict family, any-permitting rules off, legacy targets.
+// Cites the exact JSON key path.
 export function detectBadConfig(input: BadConfigDetectorInput): Finding[] {
   const findings: Finding[] = [];
   const seen = new Set<string>();

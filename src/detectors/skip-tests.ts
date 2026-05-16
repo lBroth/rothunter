@@ -1,37 +1,24 @@
 import * as crypto from 'node:crypto';
-import * as path from 'node:path';
-import { readFileSync } from 'node:fs';
+import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
+import { makeSourceReader } from '../utils/source-reader.js';
 
 export interface SkipTestsDetectorInput {
   workspaceRoot: string;
   files: ReadonlyArray<string>;
+  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
+  project?: Project;
 }
 
-/**
- * Skip/only-tests detector.
- *
- * Catches the four classic shipping-broken-tests footguns:
- *   - `describe.skip(...)` / `it.skip(...)` / `test.skip(...)`     → silenced suites
- *   - `xdescribe(...)` / `xit(...)` / `xtest(...)`                  → silenced suites (Jasmine syntax)
- *   - `describe.only(...)` / `it.only(...)` / `test.only(...)`     → CI runs ONLY this
- *   - `fdescribe(...)` / `fit(...)`                                → Jasmine `f` prefix variants
- *
- * `.only` is HIGH because merging it makes the test suite a no-op for every
- * other case. `.skip` / `x*` are MEDIUM — explicit skips are common during
- * triage but rot if left forever.
- */
+// .skip / .only / xdescribe / fdescribe in tests. .only is HIGH (suite
+// no-op on merge), .skip / x* are MED.
 export function detectSkipTests(input: SkipTestsDetectorInput): Finding[] {
+  const read = makeSourceReader(input.workspaceRoot, input.project);
   const findings: Finding[] = [];
   for (const rel of input.files) {
     if (!isTestFile(rel)) continue;
-    const abs = path.resolve(input.workspaceRoot, rel);
-    let raw: string;
-    try {
-      raw = readFileSync(abs, 'utf-8');
-    } catch {
-      continue;
-    }
+    const raw = read(rel);
+    if (raw == null) continue;
     findings.push(...analyseFile(rel, raw));
   }
   return findings;

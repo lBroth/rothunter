@@ -1,41 +1,24 @@
 import * as crypto from 'node:crypto';
-import * as path from 'node:path';
-import { readFileSync } from 'node:fs';
+import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
+import { makeSourceReader } from '../utils/source-reader.js';
 
 export interface MutableGlobalsDetectorInput {
   workspaceRoot: string;
   files: ReadonlyArray<string>;
+  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
+  project?: Project;
 }
 
-/**
- * Mutable-globals detector.
- *
- * Top-level `let` / `var` that get reassigned in the same file are
- * effectively shared mutable state across every import — a notorious
- * source of cross-test pollution, test-order dependence, and SSR
- * hydration bugs.
- *
- * Heuristic:
- *   - find each `let foo = …;` / `var foo = …;` at indent depth 0
- *   - search the rest of the file for `foo = …` (assignment, not
- *     declaration) at depth 0 or inside any function
- *   - if found, flag as MED
- *
- * Top-level `let` that is ONLY assigned once at declaration is fine —
- * it's just a const that the dev forgot to mark.
- */
+// Top-level `let`/`var` reassigned in the same file → shared mutable
+// state across importers. MED. One-shot assignment at decl is skipped.
 export function detectMutableGlobals(input: MutableGlobalsDetectorInput): Finding[] {
+  const read = makeSourceReader(input.workspaceRoot, input.project);
   const findings: Finding[] = [];
   for (const rel of input.files) {
     if (!isAnalysable(rel)) continue;
-    const abs = path.resolve(input.workspaceRoot, rel);
-    let raw: string;
-    try {
-      raw = readFileSync(abs, 'utf-8');
-    } catch {
-      continue;
-    }
+    const raw = read(rel);
+    if (raw == null) continue;
     findings.push(...analyseFile(rel, raw));
   }
   return findings;

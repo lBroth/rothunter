@@ -14,7 +14,7 @@ export function parseLlmJsonResponse(raw: string): unknown {
 function stripCodeFence(s: string): string {
   const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i;
   const m = s.trim().match(fence);
-  return m ? m[1] : s;
+  return m?.[1] ?? s;
 }
 
 function extractFirstJsonObject(s: string): string | null {

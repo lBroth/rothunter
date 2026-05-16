@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { JSX } from 'react';
 
 interface SectionHeaderProps {
   eyebrow: string;

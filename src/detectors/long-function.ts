@@ -11,23 +11,8 @@ export interface LongFunctionDetectorInput {
   highThreshold?: number;
 }
 
-/**
- * Long-function detector.
- *
- * Iterates parsed function symbols and flags those whose source spans more
- * lines than the configured thresholds:
- *   - default LOW  ≥ 60 lines
- *   - default MED  ≥ 120 lines
- *   - default HIGH ≥ 200 lines
- *
- * Long functions usually indicate (a) accumulated branching that should
- * become polymorphism or table-driven logic, (b) several responsibilities
- * tangled together, or (c) inlined helpers that want to be named.
- *
- * Top-level test functions (`describe`/`it`/`test`/`suite`) are NOT
- * flagged — long test bodies are normal, especially for setup-heavy
- * integration suites.
- */
+// Flag function symbols over 60 (low) / 120 (med) / 200 (high) lines.
+// Test bodies (describe/it/test/suite) skipped.
 export function detectLongFunctions(input: LongFunctionDetectorInput): Finding[] {
   const low = input.lowThreshold ?? 60;
   const med = input.medThreshold ?? 120;

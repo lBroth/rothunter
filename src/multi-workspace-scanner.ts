@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { TypeScriptParser, type ParseResult } from './parsers/typescript-parser.js';
@@ -15,18 +16,9 @@ export interface MultiWorkspaceParseResult {
   workspaces: WorkspaceConfig[];
 }
 
-/**
- * Parse every workspace declared in the config in one logical pass, then
- * stitch their import graphs together by resolving bare specifiers that
- * match a sibling workspace's `package` name.
- *
- * Output is a merged set of symbols + imports where:
- *   - `file` paths are workspace-prefixed (e.g. `backend/src/index.ts`)
- *     so they are globally unique across the linked group.
- *   - Imports that pointed at a workspace's package name are rewritten with
- *     a resolved `target` + `targetWorkspace` so the cross-workspace edge
- *     is visible to downstream detectors.
- */
+// Parse every linked workspace; stitch cross-workspace imports by resolving
+// bare specifiers against sibling `package` names. File paths get a
+// workspace-name prefix for global uniqueness.
 export async function scanWorkspaces(config: RotHunterConfig): Promise<MultiWorkspaceParseResult> {
   const parser = new TypeScriptParser();
 
@@ -55,8 +47,19 @@ export async function scanWorkspaces(config: RotHunterConfig): Promise<MultiWork
     if (!r) continue;
     // Prefix every file with the workspace name so downstream code can treat
     // paths as globally unique without losing the within-workspace structure.
+    // Re-mint the symbol id with the workspace name folded in — without
+    // this, two workspaces with the same relative file path (e.g. both
+    // export `interface User` from `src/types.ts`) produce symbols that
+    // share the parser's content-derived id and collapse into a single
+    // entry in every downstream Map<id, …>. The duplicate-type detector
+    // never sees the cross-workspace pair as a result.
     for (const sym of r.symbols) {
-      symbols.push({ ...sym, workspace: ws.name, file: prefix(ws.name, sym.file) });
+      symbols.push({
+        ...sym,
+        id: namespaceId(ws.name, sym.id),
+        workspace: ws.name,
+        file: prefix(ws.name, sym.file),
+      });
     }
     for (const f of r.files) files.push(prefix(ws.name, f));
     for (const imp of r.imports) {
@@ -98,6 +101,10 @@ export async function scanWorkspaces(config: RotHunterConfig): Promise<MultiWork
 function prefix(workspaceName: string, file: string): string {
   // Use POSIX separator so paths are stable across platforms.
   return `${workspaceName}/${file.split(path.sep).join('/')}`;
+}
+
+function namespaceId(workspaceName: string, id: string): string {
+  return crypto.createHash('sha256').update(`${workspaceName}::${id}`).digest('hex').slice(0, 16);
 }
 
 function readPackageName(rootAbs: string): string | undefined {

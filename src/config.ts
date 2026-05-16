@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { z } from 'zod';
 import { discoverMonorepoWorkspaces } from './graph/monorepo-detect.js';
 
 /**
@@ -41,15 +42,27 @@ export interface RotHunterConfig {
 
 const CONFIG_CANDIDATES = ['rothunter.config.json', '.rothunter/config.json'];
 
-interface RawConfigEntry {
-  path?: string;
-  name?: string;
-  package?: string;
-}
-
-interface RawConfig {
-  workspaces?: RawConfigEntry[];
-}
+// Shape mirrors src/schemas/rothunter.config.schema.json — that JSON
+// Schema powers IDE autocomplete + inline validation, this zod schema
+// powers runtime validation with line-accurate error messages. Keep the
+// two in sync.
+const RawConfigSchema = z
+  .object({
+    $schema: z.string().url().optional(),
+    workspaces: z
+      .array(
+        z
+          .object({
+            path: z.string().min(1, 'path is required'),
+            name: z.string().min(1, 'name is required'),
+            package: z.string().min(1).optional(),
+          })
+          .strict(),
+      )
+      .min(1, 'workspaces must be a non-empty array'),
+  })
+  .strict();
+type RawConfig = z.infer<typeof RawConfigSchema>;
 
 export function loadRotHunterConfig(workspaceRoot: string): RotHunterConfig | null {
   for (const candidate of CONFIG_CANDIDATES) {
@@ -72,20 +85,23 @@ export function loadRotHunterConfig(workspaceRoot: string): RotHunterConfig | nu
 }
 
 function parseConfig(configPath: string): RotHunterConfig {
-  const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as RawConfig;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  } catch (err) {
+    throw new Error(`${configPath}: invalid JSON — ${(err as Error).message}`);
+  }
+  const parsed = RawConfigSchema.safeParse(raw);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('\n');
+    throw new Error(`${configPath}: schema validation failed:\n${issues}`);
+  }
+  const data: RawConfig = parsed.data;
   const configDir = path.dirname(configPath);
 
-  if (!raw.workspaces || !Array.isArray(raw.workspaces) || raw.workspaces.length === 0) {
-    throw new Error(`${configPath}: "workspaces" must be a non-empty array.`);
-  }
-
-  const workspaces: WorkspaceConfig[] = raw.workspaces.map((entry, i) => {
-    if (!entry.path || typeof entry.path !== 'string') {
-      throw new Error(`${configPath}: workspaces[${i}].path is required.`);
-    }
-    if (!entry.name || typeof entry.name !== 'string') {
-      throw new Error(`${configPath}: workspaces[${i}].name is required.`);
-    }
+  const workspaces: WorkspaceConfig[] = data.workspaces.map((entry, i) => {
     const rootAbs = path.isAbsolute(entry.path) ? entry.path : path.resolve(configDir, entry.path);
     if (!fs.existsSync(rootAbs)) {
       throw new Error(`${configPath}: workspaces[${i}].path "${entry.path}" does not exist on disk.`);

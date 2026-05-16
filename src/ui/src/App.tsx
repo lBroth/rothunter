@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { JSX } from 'react';
 import { Dashboard } from './pages/Dashboard.js';
 import { FindingDetail } from './pages/FindingDetail.js';
 import { ScanRunning } from './pages/ScanRunning.js';
@@ -77,7 +78,11 @@ export function App(): JSX.Element {
               onOpenFinding={(fp) => setRoute({ name: 'finding', fingerprint: fp })}
               onScanStarted={(sid) => setRoute({ name: 'running', scanId: sid })}
               onOpenFindings={(filter) =>
-                setRoute({ name: 'findings', detector: filter?.detector, directory: filter?.directory })
+                setRoute({
+                  name: 'findings',
+                  detector: filter?.detector,
+                  directory: filter?.directory,
+                })
               }
             />
           )}

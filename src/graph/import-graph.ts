@@ -67,20 +67,8 @@ function addEdge(map: Map<string, Set<string>>, from: string, to: string): void 
   map.set(from, s);
 }
 
-/**
- * Resolve a TypeScript import specifier to a workspace-relative file path,
- * or null if it points to node_modules / a virtual module / an unresolvable
- * extension-less reference.
- *
- * Tries (in order):
- *   1. Relative path resolution (`./foo`, `../foo`) — the common case.
- *   2. Absolute path (`/abs/path`).
- *   3. If a `tsconfig.json` `paths` mapping is provided AND the specifier
- *      is bare, attempt alias resolution (`@/foo` → `src/foo.ts`).
- *
- * Bare specifiers without a matching alias mapping (`fs`, `@org/pkg`) return
- * null — they live in node_modules and don't participate in our graph.
- */
+// Resolve TS import specifier → workspace-relative path, or null for
+// node_modules / virtual. Tries relative, absolute, then tsconfig paths aliases.
 export function resolveImport(
   workspaceRoot: string,
   sourceFile: string,

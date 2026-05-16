@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+coverage
+src/ui/dist
+src/ui/node_modules
+src/__fixtures__
+src/ui/public/fonts
+src/mockups
+private
+package-lock.json
+*.tsbuildinfo
+.next
+.cache

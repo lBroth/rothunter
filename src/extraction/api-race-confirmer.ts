@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MlxLlmClient } from '../adapters/mlx-llm.js';
+import { MlxLlmClient, createDefaultLlmClient } from '../adapters/mlx-llm.js';
 import { parseLlmJsonResponse } from '../utils/llm-json.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -84,12 +84,13 @@ export class ApiRaceConfirmer {
   private cache = new Map<string, ApiRaceVerdict>();
 
   constructor(llm?: MlxLlmClient) {
-    this.llm = llm ?? new MlxLlmClient();
+    this.llm = llm ?? createDefaultLlmClient();
   }
 
   async confirm(input: ApiRaceCheckInput): Promise<ApiRaceVerdict | null> {
     const cacheKey = `${input.method} ${input.pathPattern}::${input.clients}::${input.sites
       .map((s) => `${s.file}:${s.line}`)
+      .sort()
       .join(',')}`;
     const cached = this.cache.get(cacheKey);
     if (cached) return cached;
