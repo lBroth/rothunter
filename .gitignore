@@ -144,3 +144,4 @@ vite.config.ts.timestamp-*
 
 # Private / internal design + planning docs (gitignored)
 /private/
+.DS_Store

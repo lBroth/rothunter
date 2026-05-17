@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!--
+    Favicon — pixel R 5×5 grid + hunter reticle on the rot tile.
+    Tiles 5×5, 1 px gap → 30×30 centred in 32×32.
+    Pattern (R-leg fully connected: col 3 in row 4 fills the gap):
+      row 0:  ■ ■ ■ ■ .
+      row 1:  ■ . . . ■
+      row 2:  ■ ■ ■ ■ .
+      row 3:  ■ . ■ . .       (leg start mid)
+      row 4:  ■ . . ■ R       (leg end + ROT tile, adjacent)
+  -->
+  <defs>
+    <linearGradient id="tMint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a7f3d0"/>
+      <stop offset="1" stop-color="#5eead4"/>
+    </linearGradient>
+    <linearGradient id="tSage" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#86efac"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <linearGradient id="tAmber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="1" stop-color="#fbbf24"/>
+    </linearGradient>
+    <linearGradient id="tCoral" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fda4af"/>
+      <stop offset="1" stop-color="#fb7185"/>
+    </linearGradient>
+    <linearGradient id="tRose" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fecdd3"/>
+      <stop offset="1" stop-color="#f43f5e"/>
+    </linearGradient>
+  </defs>
+  <!-- Row 0. -->
+  <rect x="1"  y="1"  width="5" height="5" rx="1" fill="url(#tMint)"/>
+  <rect x="7"  y="1"  width="5" height="5" rx="1" fill="url(#tMint)"/>
+  <rect x="13" y="1"  width="5" height="5" rx="1" fill="url(#tSage)"/>
+  <rect x="19" y="1"  width="5" height="5" rx="1" fill="url(#tSage)"/>
+  <!-- Row 1. -->
+  <rect x="1"  y="7"  width="5" height="5" rx="1" fill="url(#tMint)"/>
+  <rect x="25" y="7"  width="5" height="5" rx="1" fill="url(#tAmber)"/>
+  <!-- Row 2 — mid bar. -->
+  <rect x="1"  y="13" width="5" height="5" rx="1" fill="url(#tSage)"/>
+  <rect x="7"  y="13" width="5" height="5" rx="1" fill="url(#tAmber)"/>
+  <rect x="13" y="13" width="5" height="5" rx="1" fill="url(#tAmber)"/>
+  <rect x="19" y="13" width="5" height="5" rx="1" fill="url(#tCoral)"/>
+  <!-- Row 3 — diagonal start (leg mid). -->
+  <rect x="1"  y="19" width="5" height="5" rx="1" fill="url(#tAmber)"/>
+  <rect x="13" y="19" width="5" height="5" rx="1" fill="url(#tCoral)"/>
+  <!-- Row 4 — stem base + leg end + ROT tile (adjacent). -->
+  <rect x="1"  y="25" width="5" height="5" rx="1" fill="url(#tCoral)"/>
+  <rect x="19" y="25" width="5" height="5" rx="1" fill="url(#tCoral)"/>
+  <rect x="25" y="25" width="5" height="5" rx="1" fill="url(#tRose)"/>
+  <!-- Hunter reticle — dashed rose square around the rot tile. -->
+  <rect x="23.5" y="23.5" width="8" height="8" rx="1.5"
+        fill="none" stroke="#f43f5e" stroke-width="1"
+        stroke-dasharray="1.5 1.2"/>
+</svg>
