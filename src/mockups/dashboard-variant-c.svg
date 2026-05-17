@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="820" viewBox="0 0 1280 820" font-family="ui-monospace, 'SF Mono', Consolas, monospace">
+  <defs>
+    <style>
+      .bg { fill: #0e1117; }
+      .panel { fill: #161b22; stroke: #30363d; stroke-width: 1; }
+      .panel-hi { fill: #1a1f27; stroke: #30363d; stroke-width: 1; }
+      .heading { font-family: ui-sans-serif, -apple-system, 'Segoe UI', sans-serif; font-weight: 600; fill: #e6edf3; }
+      .label { fill: #8b949e; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; font-family: ui-sans-serif, sans-serif; font-weight: 600; }
+      .value { fill: #e6edf3; font-size: 13px; }
+      .value-mono { fill: #e6edf3; font-size: 12px; font-family: ui-monospace, monospace; }
+      .muted { fill: #6e7681; font-size: 11px; font-family: ui-monospace, monospace; }
+      .high { fill: #f85149; }
+      .med  { fill: #d29922; }
+      .low  { fill: #3fb950; }
+      .live { fill: #3fb950; }
+      .accent { fill: #58a6ff; }
+      .ce { fill: #c9d1d9; }
+      .barbg { fill: #21262d; }
+      .barhi { fill: #f85149; }
+      .barlo { fill: #3fb950; }
+      .barmd { fill: #d29922; }
+      .grid { stroke: #30363d; stroke-width: 1; fill: none; }
+      .row-alt { fill: #11151c; }
+      .pill-high { fill: #3a1416; stroke: #f85149; stroke-width: 1; }
+      .pill-text-high { fill: #f85149; font-size: 10px; font-weight: 700; font-family: ui-sans-serif, sans-serif; letter-spacing: 0.05em; }
+      .clusterpill { fill: #1f2632; stroke: #30363d; stroke-width: 1; }
+      .clusterpill-text { fill: #79c0ff; font-size: 10px; font-family: ui-monospace, monospace; }
+      .kbd { fill: #1f2632; stroke: #30363d; }
+      .kbd-text { fill: #c9d1d9; font-size: 11px; font-family: ui-monospace, monospace; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1280" height="820"/>
+
+  <!-- ===== Header ===== -->
+  <rect class="panel" x="16" y="16" width="1248" height="56" rx="8"/>
+  <text class="heading" x="36" y="50" font-size="20">rothunter</text>
+  <text class="muted" x="138" y="50" font-size="13">outline / outline</text>
+  <text class="muted" x="320" y="50" font-size="12">scan #142</text>
+  <text class="muted" x="410" y="50" font-size="12">5m 23s</text>
+  <text class="muted" x="495" y="50" font-size="12">tier-3 73 %</text>
+  <circle class="live" cx="1170" cy="44" r="4"/>
+  <text class="value" x="1184" y="48" font-size="12">watching</text>
+
+  <!-- ===== Counts strip ===== -->
+  <rect class="panel" x="16" y="88" width="1248" height="64" rx="8"/>
+  <text class="label" x="40" y="112">findings</text>
+  <text class="value-mono" x="40" y="138" font-size="22">99</text>
+  <line x1="160" y1="100" x2="160" y2="140" class="grid"/>
+  <text class="label" x="180" y="112">high</text>
+  <text class="high"  x="180" y="138" font-size="22" font-family="ui-monospace, monospace">17</text>
+  <line x1="280" y1="100" x2="280" y2="140" class="grid"/>
+  <text class="label" x="300" y="112">medium</text>
+  <text class="med"   x="300" y="138" font-size="22" font-family="ui-monospace, monospace">0</text>
+  <line x1="400" y1="100" x2="400" y2="140" class="grid"/>
+  <text class="label" x="420" y="112">low</text>
+  <text class="low"   x="420" y="138" font-size="22" font-family="ui-monospace, monospace">82</text>
+  <line x1="520" y1="100" x2="520" y2="140" class="grid"/>
+  <text class="label" x="540" y="112">files scanned</text>
+  <text class="value-mono" x="540" y="138" font-size="22">1 942</text>
+  <line x1="700" y1="100" x2="700" y2="140" class="grid"/>
+  <text class="label" x="720" y="112">symbols</text>
+  <text class="value-mono" x="720" y="138" font-size="22">3 518</text>
+  <line x1="850" y1="100" x2="850" y2="140" class="grid"/>
+  <text class="label" x="870" y="112">trend high (7 d)</text>
+  <!-- sparkline -->
+  <g transform="translate(870,120)">
+    <rect x="0" y="14" width="6" height="4" class="barlo"/>
+    <rect x="10" y="11" width="6" height="7" class="barlo"/>
+    <rect x="20" y="9" width="6" height="9" class="barmd"/>
+    <rect x="30" y="7" width="6" height="11" class="barmd"/>
+    <rect x="40" y="5" width="6" height="13" class="barhi"/>
+    <rect x="50" y="3" width="6" height="15" class="barhi"/>
+    <rect x="60" y="2" width="6" height="16" class="barhi"/>
+  </g>
+  <text class="high" x="950" y="138" font-size="13">+6</text>
+
+  <!-- ===== Detector breakdown (left) + Repo heatmap (right) ===== -->
+  <rect class="panel" x="16" y="168" width="616" height="220" rx="8"/>
+  <text class="label" x="36" y="194">detectors</text>
+  <g transform="translate(36,212)">
+    <!-- header -->
+    <text class="muted" x="0"   y="0">detector</text>
+    <text class="muted" x="340" y="0" text-anchor="end">H</text>
+    <text class="muted" x="400" y="0" text-anchor="end">M</text>
+    <text class="muted" x="460" y="0" text-anchor="end">L</text>
+    <line x1="0" y1="8" x2="560" y2="8" class="grid"/>
+
+    <g transform="translate(0,28)" font-size="12" font-family="ui-monospace, monospace">
+      <text class="ce" x="0">race·read-modify-write</text>
+      <text class="high" x="340" text-anchor="end">6</text>
+      <text class="muted" x="400" text-anchor="end">0</text>
+      <text class="low" x="460" text-anchor="end">2</text>
+    </g>
+    <g transform="translate(0,48)" font-size="12" font-family="ui-monospace, monospace">
+      <text class="ce" x="0">race·promise.all</text>
+      <text class="high" x="340" text-anchor="end">3</text>
+      <text class="muted" x="400" text-anchor="end">0</text>
+      <text class="low" x="460" text-anchor="end">1</text>
+    </g>
+    <g transform="translate(0,68)" font-size="12" font-family="ui-monospace, monospace">
+      <text class="ce" x="0">race·emitter-handler</text>
+      <text class="high" x="340" text-anchor="end">2</text>
+      <text class="muted" x="400" text-anchor="end">0</text>
+      <text class="muted" x="460" text-anchor="end">0</text>
+    </g>
+    <g transform="translate(0,88)" font-size="12" font-family="ui-monospace, monospace">
+      <text class="ce" x="0">shared-db-write·mongoose</text>
+      <text class="high" x="340" text-anchor="end">4</text>
+      <text class="muted" x="400" text-anchor="end">0</text>
+      <text class="low" x="460" text-anchor="end">0</text>
+    </g>
+    <g transform="translate(0,108)" font-size="12" font-family="ui-monospace, monospace">
+      <text class="ce" x="0">shared-db-write·raw-sql</text>
+      <text class="high" x="340" text-anchor="end">1</text>
+      <text class="muted" x="400" text-anchor="end">0</text>
+      <text class="muted" x="460" text-anchor="end">0</text>
+    </g>
+    <g transform="translate(0,128)" font-size="12" font-family="ui-monospace, monospace">
+      <text class="ce" x="0">api-race</text>
+      <text class="high" x="340" text-anchor="end">1</text>
+      <text class="muted" x="400" text-anchor="end">0</text>
+      <text class="muted" x="460" text-anchor="end">0</text>
+    </g>
+    <g transform="translate(0,148)" font-size="12" font-family="ui-monospace, monospace">
+      <text class="ce" x="0">duplicate-type</text>
+      <text class="muted" x="340" text-anchor="end">0</text>
+      <text class="muted" x="400" text-anchor="end">0</text>
+      <text class="low" x="460" text-anchor="end">31</text>
+    </g>
+    <line x1="0" y1="160" x2="560" y2="160" class="grid"/>
+    <g transform="translate(0,180)" font-size="12" font-family="ui-monospace, monospace" font-weight="600">
+      <text class="ce" x="0">totals</text>
+      <text class="high" x="340" text-anchor="end">17</text>
+      <text class="muted" x="400" text-anchor="end">0</text>
+      <text class="low" x="460" text-anchor="end">82</text>
+    </g>
+  </g>
+
+  <rect class="panel" x="648" y="168" width="616" height="220" rx="8"/>
+  <text class="label" x="668" y="194">repo heatmap — high findings per directory</text>
+  <g transform="translate(668,222)" font-size="12" font-family="ui-monospace, monospace">
+    <text class="ce" x="0" y="0">server/api/</text>
+    <rect x="180" y="-10" width="280" height="14" class="barbg" rx="2"/>
+    <rect x="180" y="-10" width="200" height="14" class="barhi" rx="2"/>
+    <text class="high" x="470" y="0">10</text>
+
+    <text class="ce" x="0" y="26">server/queues/</text>
+    <rect x="180" y="16" width="280" height="14" class="barbg" rx="2"/>
+    <rect x="180" y="16" width="80"  height="14" class="barhi" rx="2"/>
+    <text class="high" x="470" y="26">4</text>
+
+    <text class="ce" x="0" y="52">realtime/</text>
+    <rect x="180" y="42" width="280" height="14" class="barbg" rx="2"/>
+    <rect x="180" y="42" width="60"  height="14" class="barhi" rx="2"/>
+    <text class="high" x="470" y="52">3</text>
+
+    <text class="ce" x="0" y="78">server/commands/</text>
+    <rect x="180" y="68" width="280" height="14" class="barbg" rx="2"/>
+    <rect x="180" y="68" width="20"  height="14" class="barhi" rx="2"/>
+    <text class="muted" x="470" y="78">1</text>
+
+    <text class="muted" x="0" y="104">plugins/auth/</text>
+    <rect x="180" y="94" width="280" height="14" class="barbg" rx="2"/>
+    <text class="muted" x="470" y="104">0</text>
+
+    <text class="muted" x="0" y="130">shared/</text>
+    <rect x="180" y="120" width="280" height="14" class="barbg" rx="2"/>
+    <text class="muted" x="470" y="130">0</text>
+
+    <text class="muted" x="0" y="156">app/</text>
+    <rect x="180" y="146" width="280" height="14" class="barbg" rx="2"/>
+    <text class="muted" x="470" y="156">0</text>
+  </g>
+  <text class="muted" x="668" y="376" font-size="11">ORM mix: mongoose (4)   raw-sql (1)   sequelize (0)     services on shared cols: 3</text>
+
+  <!-- ===== ALL HIGH FINDINGS table ===== -->
+  <rect class="panel" x="16" y="404" width="1248" height="368" rx="8"/>
+  <text class="label" x="36" y="430">all high findings (17)</text>
+  <text class="muted" x="640" y="430" font-size="11">grouped by cluster · sortable</text>
+
+  <!-- column headers -->
+  <g transform="translate(36,452)" font-size="11" font-family="ui-sans-serif, sans-serif" fill="#8b949e" font-weight="600">
+    <text x="0">#</text>
+    <text x="44">SEV</text>
+    <text x="100">DETECTOR</text>
+    <text x="340">LOCATION</text>
+    <text x="900">CLUSTER</text>
+    <text x="1100">SEEN</text>
+  </g>
+  <line x1="36" y1="462" x2="1244" y2="462" class="grid"/>
+
+  <!-- rows -->
+  <g font-family="ui-monospace, monospace" font-size="12">
+    <g transform="translate(36,484)">
+      <text class="muted" x="0">001</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">race·read-modify-write</text>
+      <text class="muted" x="340">server/api/documents.ts:412</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">doc-rev</text>
+      <text class="muted" x="1100">11×</text>
+    </g>
+    <rect class="row-alt" x="36" y="494" width="1208" height="22"/>
+    <g transform="translate(36,510)">
+      <text class="muted" x="0">002</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">race·read-modify-write</text>
+      <text class="muted" x="340">server/api/documents.ts:488</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">doc-rev</text>
+      <text class="muted" x="1100">9×</text>
+    </g>
+    <g transform="translate(36,534)">
+      <text class="muted" x="0">003</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">race·read-modify-write</text>
+      <text class="muted" x="340">server/api/revisions.ts:71</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">doc-rev</text>
+      <text class="muted" x="1100">6×</text>
+    </g>
+    <rect class="row-alt" x="36" y="544" width="1208" height="22"/>
+    <g transform="translate(36,560)">
+      <text class="muted" x="0">004</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">shared-db-write·mongoose</text>
+      <text class="muted" x="340">users.email · auth/signup.ts</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">usr-col</text>
+      <text class="muted" x="1100">7×</text>
+    </g>
+    <g transform="translate(36,584)">
+      <text class="muted" x="0">005</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">shared-db-write·mongoose</text>
+      <text class="muted" x="340">users.email · billing/sync.ts</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">usr-col</text>
+      <text class="muted" x="1100">4×</text>
+    </g>
+    <rect class="row-alt" x="36" y="594" width="1208" height="22"/>
+    <g transform="translate(36,610)">
+      <text class="muted" x="0">006</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">api-race</text>
+      <text class="muted" x="340">POST /collections, DELETE /:id</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">coll-idm</text>
+      <text class="muted" x="1100">3×</text>
+    </g>
+    <g transform="translate(36,634)">
+      <text class="muted" x="0">007</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">race·promise.all</text>
+      <text class="muted" x="340">server/queues/email.ts:88</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">mail-q</text>
+      <text class="muted" x="1100">5×</text>
+    </g>
+    <rect class="row-alt" x="36" y="644" width="1208" height="22"/>
+    <g transform="translate(36,660)">
+      <text class="muted" x="0">008</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">race·promise.all</text>
+      <text class="muted" x="340">server/queues/notif.ts:43</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">mail-q</text>
+      <text class="muted" x="1100">2×</text>
+    </g>
+    <g transform="translate(36,684)">
+      <text class="muted" x="0">009</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">race·emitter-handler</text>
+      <text class="muted" x="340">realtime/socket.ts:217  (presence)</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">rt-pres</text>
+      <text class="muted" x="1100">4×</text>
+    </g>
+    <rect class="row-alt" x="36" y="694" width="1208" height="22"/>
+    <g transform="translate(36,710)">
+      <text class="muted" x="0">010</text>
+      <rect class="pill-high" x="40" y="-12" width="42" height="16" rx="2"/>
+      <text class="pill-text-high" x="61" y="-1" text-anchor="middle">HIGH</text>
+      <text class="ce" x="100">shared-db-write·raw-sql</text>
+      <text class="muted" x="340">teams.subdomain · migrations/2026_*</text>
+      <rect class="clusterpill" x="900" y="-12" width="72" height="16" rx="8"/>
+      <text class="clusterpill-text" x="936" y="-1" text-anchor="middle">team-sd</text>
+      <text class="muted" x="1100">2×</text>
+    </g>
+    <g transform="translate(36,734)">
+      <text class="muted" x="0">…</text>
+      <text class="muted" x="100">7 more high findings (collapsed)</text>
+      <text class="muted" x="1100">expand ↓</text>
+    </g>
+  </g>
+
+  <!-- ===== Footer keys ===== -->
+  <g transform="translate(36,790)">
+    <rect class="kbd" x="0"   y="-12" width="22" height="16" rx="3"/>
+    <text class="kbd-text" x="11" y="-1" text-anchor="middle">/</text>
+    <text class="muted" x="28" y="0">filter</text>
+
+    <rect class="kbd" x="90"  y="-12" width="22" height="16" rx="3"/>
+    <text class="kbd-text" x="101" y="-1" text-anchor="middle">c</text>
+    <text class="muted" x="118" y="0">cluster</text>
+
+    <rect class="kbd" x="190" y="-12" width="22" height="16" rx="3"/>
+    <text class="kbd-text" x="201" y="-1" text-anchor="middle">d</text>
+    <text class="muted" x="218" y="0">detector</text>
+
+    <rect class="kbd" x="305" y="-12" width="22" height="16" rx="3"/>
+    <text class="kbd-text" x="316" y="-1" text-anchor="middle">g</text>
+    <text class="muted" x="333" y="0">graph</text>
+
+    <rect class="kbd" x="410" y="-12" width="22" height="16" rx="3"/>
+    <text class="kbd-text" x="421" y="-1" text-anchor="middle">s</text>
+    <text class="muted" x="438" y="0">suppress</text>
+
+    <rect class="kbd" x="525" y="-12" width="22" height="16" rx="3"/>
+    <text class="kbd-text" x="536" y="-1" text-anchor="middle">w</text>
+    <text class="muted" x="553" y="0">watch</text>
+
+    <rect class="kbd" x="635" y="-12" width="22" height="16" rx="3"/>
+    <text class="kbd-text" x="646" y="-1" text-anchor="middle">r</text>
+    <text class="muted" x="663" y="0">rescan</text>
+
+    <rect class="kbd" x="745" y="-12" width="22" height="16" rx="3"/>
+    <text class="kbd-text" x="756" y="-1" text-anchor="middle">q</text>
+    <text class="muted" x="763" y="0">quit</text>
+  </g>
+</svg>

@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Inter, sans-serif">
+  <defs>
+    <style>
+      .bg        { fill: #0e1117; }
+      .sidebar   { fill: #0a0d12; }
+      .panel     { fill: #161b22; stroke: #21262d; stroke-width: 1; }
+      .panel-deep{ fill: #0d1117; stroke: #21262d; stroke-width: 1; }
+      .divider   { stroke: #21262d; stroke-width: 1; }
+      .hairline  { stroke: #1a1f27; stroke-width: 1; }
+
+      .h1        { fill: #f0f6fc; font-weight: 600; font-size: 18px; }
+      .h2        { fill: #e6edf3; font-weight: 600; font-size: 13px; }
+      .val       { fill: #e6edf3; font-size: 13px; }
+      .val-mono  { fill: #c9d1d9; font-size: 12px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+      .lbl       { fill: #6e7681; font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; }
+      .muted     { fill: #7d8590; font-size: 12px; }
+      .muted-mono{ fill: #7d8590; font-size: 11.5px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+      .link      { fill: #58a6ff; font-size: 12px; }
+      .link-mono { fill: #58a6ff; font-size: 12px; font-family: ui-monospace, monospace; }
+
+      .pill-high { fill: #2a0e10; stroke: #6e1f24; }
+      .pill-high-t{ fill: #f85149; font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em; }
+      .pill-blue { fill: #0f1f33; stroke: #1f3a5a; }
+      .pill-blue-t{ fill: #79c0ff; font-size: 9.5px; font-weight: 600; font-family: ui-monospace, monospace; }
+      .pill-purple{ fill: #1c0f2a; stroke: #3a2256; }
+      .pill-purple-t{ fill: #d2a8ff; font-size: 9.5px; font-weight: 600; }
+      .pill-ghost{ fill: #1c2128; stroke: #30363d; }
+      .pill-ghost-t{ fill: #c9d1d9; font-size: 10px; }
+      .pill-green{ fill: #0d2014; stroke: #1f4a2a; }
+      .pill-green-t{ fill: #3fb950; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; }
+
+      .btn-primary { fill: #1f6feb; stroke: #388bfd; }
+      .btn-primary-t{ fill: #ffffff; font-size: 12px; font-weight: 600; }
+      .btn-ghost  { fill: #1c2128; stroke: #30363d; }
+      .btn-ghost-t{ fill: #c9d1d9; font-size: 12px; }
+      .btn-danger { fill: #1f1416; stroke: #5c2024; }
+      .btn-danger-t{ fill: #ff7b72; font-size: 12px; font-weight: 500; }
+
+      .gutter    { fill: #484f58; font-size: 11.5px; font-family: ui-monospace, monospace; }
+      .gutter-hit{ fill: #f85149; font-size: 11.5px; font-family: ui-monospace, monospace; font-weight: 700; }
+      .kw        { fill: #ff7b72; }
+      .id        { fill: #d2a8ff; }
+      .str       { fill: #a5d6ff; }
+      .num       { fill: #79c0ff; }
+      .fn        { fill: #d2a8ff; }
+      .com       { fill: #6e7681; font-style: italic; }
+      .txt       { fill: #c9d1d9; }
+    </style>
+    <linearGradient id="hi-bg" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f85149" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#f85149" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="tier3card" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#1d1428"/>
+      <stop offset="100%" stop-color="#16101e"/>
+    </linearGradient>
+  </defs>
+
+  <rect class="bg" width="1280" height="800"/>
+
+  <!-- ============ Top Bar ============ -->
+  <rect x="0" y="0" width="1280" height="52" fill="#0a0d12"/>
+  <line class="divider" x1="0" y1="52" x2="1280" y2="52"/>
+
+  <g transform="translate(20,14)">
+    <rect width="24" height="24" rx="6" fill="#1f6feb"/>
+    <path d="M7 12 L11 16 L17 8" stroke="#ffffff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text class="h1" x="54" y="33" font-size="15">RotHunter</text>
+
+  <rect x="148" y="12" width="218" height="28" rx="6" fill="#161b22" stroke="#30363d"/>
+  <circle cx="164" cy="26" r="6" fill="#a371f7"/>
+  <text class="val" x="178" y="30" font-size="12.5">outline / outline</text>
+  <text class="muted-mono" x="284" y="30">/workspace</text>
+  <path d="M352 24 l5 5 l5 -5" stroke="#7d8590" stroke-width="1.4" fill="none"/>
+
+  <rect x="378" y="12" width="172" height="28" rx="6" fill="#161b22" stroke="#30363d"/>
+  <circle cx="394" cy="26" r="3" fill="#3fb950"/>
+  <text class="val-mono" x="404" y="30">scan #142 · 4m ago</text>
+  <path d="M536 24 l5 5 l5 -5" stroke="#7d8590" stroke-width="1.4" fill="none"/>
+
+  <text class="muted" x="1042" y="31" font-size="12">tier-3 73%</text>
+  <circle cx="1118" cy="26" r="4" fill="#3fb950"/>
+  <text class="val" x="1130" y="30" font-size="12">watching</text>
+
+  <g transform="translate(1206,16)">
+    <circle cx="12" cy="12" r="10" fill="none" stroke="#7d8590" stroke-width="1.4"/>
+    <circle cx="12" cy="12" r="3" fill="none" stroke="#7d8590" stroke-width="1.4"/>
+    <line x1="12" y1="2" x2="12" y2="5" stroke="#7d8590" stroke-width="1.4"/>
+    <line x1="12" y1="19" x2="12" y2="22" stroke="#7d8590" stroke-width="1.4"/>
+    <line x1="2" y1="12" x2="5" y2="12" stroke="#7d8590" stroke-width="1.4"/>
+    <line x1="19" y1="12" x2="22" y2="12" stroke="#7d8590" stroke-width="1.4"/>
+  </g>
+  <circle cx="1252" cy="26" r="12" fill="#a371f7"/>
+  <text x="1252" y="30" text-anchor="middle" fill="#0e1117" font-size="11" font-weight="700">SB</text>
+
+  <!-- ============ Sidebar ============ -->
+  <rect x="0" y="52" width="56" height="748" class="sidebar"/>
+  <line class="divider" x1="56" y1="52" x2="56" y2="800"/>
+
+  <g transform="translate(8,68)">
+    <rect width="40" height="40" rx="8" fill="transparent"/>
+    <rect x="8" y="10" width="10" height="10" rx="2" fill="none" stroke="#7d8590" stroke-width="1.5"/>
+    <rect x="22" y="10" width="10" height="10" rx="2" fill="none" stroke="#7d8590" stroke-width="1.5"/>
+    <rect x="8" y="24" width="10" height="10" rx="2" fill="none" stroke="#7d8590" stroke-width="1.5"/>
+    <rect x="22" y="24" width="10" height="10" rx="2" fill="none" stroke="#7d8590" stroke-width="1.5"/>
+  </g>
+
+  <!-- Findings (active) -->
+  <rect x="8" y="116" width="40" height="40" rx="8" fill="#1f2937" stroke="#30363d"/>
+  <rect x="4" y="116" width="2" height="40" rx="1" fill="#58a6ff"/>
+  <g transform="translate(8,116)">
+    <circle cx="20" cy="20" r="11" fill="none" stroke="#58a6ff" stroke-width="1.7"/>
+    <line x1="20" y1="14" x2="20" y2="22" stroke="#58a6ff" stroke-width="1.7" stroke-linecap="round"/>
+    <circle cx="20" cy="26" r="1.5" fill="#58a6ff"/>
+    <circle cx="36" cy="8" r="7" fill="#f85149"/>
+    <text x="36" y="11" text-anchor="middle" fill="#ffffff" font-size="9" font-weight="700">17</text>
+  </g>
+
+  <g transform="translate(8,164)">
+    <path d="M14 14 L26 14 L26 22 L20 28 L14 22 Z" fill="none" stroke="#7d8590" stroke-width="1.6" stroke-linejoin="round"/>
+    <circle cx="20" cy="19" r="2" fill="#7d8590"/>
+  </g>
+  <g transform="translate(8,212)">
+    <circle cx="20" cy="20" r="10" fill="none" stroke="#7d8590" stroke-width="1.6"/>
+    <path d="M20 14 L20 20 L25 23" stroke="#7d8590" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(8,260)">
+    <circle cx="20" cy="20" r="3.5" fill="none" stroke="#7d8590" stroke-width="1.6"/>
+    <circle cx="20" cy="20" r="9" fill="none" stroke="#7d8590" stroke-width="1.6" stroke-dasharray="3 2"/>
+  </g>
+
+  <!-- ============ Breadcrumb ============ -->
+  <g transform="translate(80,76)" font-size="13">
+    <text class="link" x="0" y="4">Dashboard</text>
+    <text class="muted" x="74" y="4">›</text>
+    <text class="link" x="86" y="4">Findings</text>
+    <text class="muted" x="142" y="4">›</text>
+    <text class="muted" x="154" y="4">cluster</text>
+    <rect x="198" y="-12" width="78" height="20" rx="4" class="pill-blue"/>
+    <text class="pill-blue-t" x="210" y="2" font-size="11">doc-rev</text>
+  </g>
+
+  <!-- ============ Finding header ============ -->
+  <g transform="translate(80,108)">
+    <rect width="40" height="22" rx="4" class="pill-high"/>
+    <text class="pill-high-t" x="9" y="15">HIGH</text>
+  </g>
+  <text class="h1" x="132" y="125" font-size="22">race · read-modify-write</text>
+  <text class="muted-mono" x="132" y="148" font-size="12">fp 7a3f9c2e</text>
+  <rect x="208" y="135" width="74" height="18" rx="4" class="pill-ghost"/>
+  <text class="pill-ghost-t" x="218" y="148" font-family="ui-monospace, monospace" font-size="10">copy hash</text>
+
+  <text class="muted" x="304" y="148" font-size="12">·</text>
+  <text class="muted" x="318" y="148" font-size="12">seen in 3 scans</text>
+  <text class="muted" x="420" y="148" font-size="12">·</text>
+  <text class="muted" x="434" y="148" font-size="12">first observed scan #138, May 14</text>
+
+  <!-- right side actions -->
+  <rect x="980" y="112" width="106" height="34" rx="6" class="btn-ghost"/>
+  <circle cx="998" cy="129" r="6" fill="none" stroke="#c9d1d9" stroke-width="1.4"/>
+  <path d="M998 125 L998 129 L1001 132" stroke="#c9d1d9" stroke-width="1.4" fill="none"/>
+  <text class="btn-ghost-t" x="1010" y="133">Snooze 7d</text>
+
+  <rect x="1094" y="112" width="160" height="34" rx="6" class="btn-primary"/>
+  <path d="M1110 122 L1110 134 L1118 134" stroke="#fff" stroke-width="1.6" fill="none"/>
+  <rect x="1116" y="118" width="14" height="12" rx="1.5" fill="none" stroke="#fff" stroke-width="1.6"/>
+  <text class="btn-primary-t" x="1140" y="133">Open in editor</text>
+
+  <line class="hairline" x1="80" y1="172" x2="1254" y2="172"/>
+
+  <!-- ============ Tier-3 LLM verdict card ============ -->
+  <rect x="80" y="190" width="838" height="98" rx="10" fill="url(#tier3card)" stroke="#3a2256"/>
+  <rect x="80" y="190" width="3" height="98" rx="2" fill="#a371f7"/>
+
+  <g transform="translate(100,210)">
+    <!-- sparkle icon -->
+    <path d="M0 8 L4 10 L6 14 L8 10 L12 8 L8 6 L6 2 L4 6 Z" fill="#a371f7"/>
+  </g>
+  <text class="lbl" x="120" y="218" fill="#a371f7">TIER-3 LLM VERDICT</text>
+  <rect x="240" y="206" width="58" height="18" rx="4" class="pill-green"/>
+  <text class="pill-green-t" x="252" y="219">RACE</text>
+  <rect x="304" y="206" width="74" height="18" rx="4" class="pill-purple"/>
+  <text class="pill-purple-t" x="313" y="219" font-family="ui-monospace, monospace" font-size="10">conf 0.85</text>
+
+  <text x="100" y="248" fill="#e6edf3" font-size="13.5" font-weight="500">Real cross-flow race — independent flows <tspan font-family="ui-monospace, monospace" fill="#d2a8ff">documentMover</tspan> and <tspan font-family="ui-monospace, monospace" fill="#d2a8ff">documentPermanentDeleter</tspan> write the same column without locking.</text>
+  <text x="100" y="270" fill="#7d8590" font-size="12">No transaction or row lock observed. Concurrent calls can clobber <tspan font-family="ui-monospace, monospace" fill="#a5d6ff">documents.revision</tspan> updates.</text>
+
+  <!-- model attribution row -->
+  <line class="hairline" x1="100" y1="280" x2="898" y2="280"/>
+  <g transform="translate(100,278)" font-size="11">
+    <circle cx="6" cy="8" r="3" fill="#a371f7"/>
+    <text class="muted-mono" x="16" y="11">Qwen2.5-Coder-14B-Instruct-Q4</text>
+    <text class="muted" x="220" y="11">·</text>
+    <text class="muted-mono" x="230" y="11">llama.cpp / local</text>
+    <text class="muted" x="346" y="11">·</text>
+    <text class="muted-mono" x="356" y="11">May 17 14:22:41</text>
+    <text class="muted" x="478" y="11">·</text>
+    <text class="muted-mono" x="488" y="11">1.83s</text>
+    <text class="link" x="780" y="11">Show reasoning →</text>
+  </g>
+
+  <!-- ============ Code viewer ============ -->
+  <rect x="80" y="306" width="838" height="436" rx="10" class="panel-deep"/>
+
+  <!-- code header tab strip -->
+  <rect x="80" y="306" width="838" height="40" rx="10" fill="#11151c"/>
+  <rect x="80" y="336" width="838" height="10" fill="#11151c"/>
+  <line class="hairline" x1="80" y1="346" x2="918" y2="346"/>
+
+  <rect x="96" y="316" width="232" height="22" rx="4" fill="#0d1117" stroke="#30363d"/>
+  <g transform="translate(104,322)">
+    <path d="M2 0 L8 0 L12 4 L12 14 L2 14 Z" fill="none" stroke="#7d8590" stroke-width="1.3"/>
+  </g>
+  <text class="val-mono" x="122" y="332" font-size="11">server/commands/documentMover.ts</text>
+
+  <text class="muted-mono" x="784" y="332">lines 142–148</text>
+  <text class="link-mono" x="880" y="332" text-anchor="end">view full</text>
+
+  <!-- code area -->
+  <rect x="80" y="346" width="48" height="396" fill="#0a0d12"/>
+  <line class="hairline" x1="128" y1="346" x2="128" y2="742"/>
+
+  <!-- red highlight bg for racy region -->
+  <rect x="128" y="442" width="790" height="84" fill="url(#hi-bg)"/>
+  <rect x="80" y="442" width="4" height="84" fill="#f85149"/>
+
+  <g font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="12.5">
+    <!-- 138 -->
+    <text class="gutter" x="112" y="370" text-anchor="end">138</text>
+    <text x="144" y="370"><tspan class="kw">export async function</tspan> <tspan class="fn">documentMover</tspan>(</text>
+
+    <!-- 139 -->
+    <text class="gutter" x="112" y="390" text-anchor="end">139</text>
+    <text x="144" y="390"><tspan class="txt">  documentId: </tspan><tspan class="id">string</tspan><tspan class="txt">,</tspan></text>
+
+    <!-- 140 -->
+    <text class="gutter" x="112" y="410" text-anchor="end">140</text>
+    <text x="144" y="410"><tspan class="txt">  newParentId: </tspan><tspan class="id">string</tspan></text>
+
+    <!-- 141 -->
+    <text class="gutter" x="112" y="430" text-anchor="end">141</text>
+    <text x="144" y="430"><tspan class="txt">) {</tspan></text>
+
+    <!-- 142 (READ line, highlighted) -->
+    <text class="gutter-hit" x="112" y="460" text-anchor="end">142</text>
+    <text x="144" y="460"><tspan class="txt">  </tspan><tspan class="kw">const</tspan><tspan class="txt"> doc = </tspan><tspan class="kw">await</tspan><tspan class="txt"> Document.</tspan><tspan class="fn">findByPk</tspan><tspan class="txt">(documentId);</tspan></text>
+
+    <!-- 143 -->
+    <text class="gutter-hit" x="112" y="480" text-anchor="end">143</text>
+    <text x="144" y="480"><tspan class="txt">  doc.revision += </tspan><tspan class="num">1</tspan><tspan class="txt">;</tspan></text>
+
+    <!-- 144 (await) -->
+    <text class="gutter-hit" x="112" y="500" text-anchor="end">144</text>
+    <text x="144" y="500"><tspan class="txt">  </tspan><tspan class="kw">await</tspan><tspan class="txt"> doc.</tspan><tspan class="fn">save</tspan><tspan class="txt">();</tspan></text>
+
+    <!-- 145 (write line via update) -->
+    <text class="gutter-hit" x="112" y="520" text-anchor="end">145</text>
+    <text x="144" y="520"><tspan class="txt">  </tspan><tspan class="kw">await</tspan><tspan class="txt"> Document.</tspan><tspan class="fn">update</tspan><tspan class="txt">({ parentDocumentId: newParentId },</tspan></text>
+
+    <!-- 146 -->
+    <text class="gutter" x="112" y="540" text-anchor="end">146</text>
+    <text x="144" y="540"><tspan class="txt">                       { where: { id: documentId } });</tspan></text>
+
+    <!-- 147 -->
+    <text class="gutter" x="112" y="560" text-anchor="end">147</text>
+    <text x="144" y="560"><tspan class="txt">  </tspan><tspan class="com">// no transaction — concurrent move/delete can clobber revision</tspan></text>
+
+    <!-- 148 -->
+    <text class="gutter" x="112" y="580" text-anchor="end">148</text>
+    <text x="144" y="580"><tspan class="kw">  return</tspan><tspan class="txt"> doc;</tspan></text>
+
+    <!-- 149 -->
+    <text class="gutter" x="112" y="600" text-anchor="end">149</text>
+    <text x="144" y="600"><tspan class="txt">}</tspan></text>
+  </g>
+
+  <!-- Annotation pointer to L142-L144 -->
+  <g transform="translate(640,448)">
+    <rect width="262" height="74" rx="6" fill="#0d1117" stroke="#6e1f24"/>
+    <text class="muted" x="14" y="20" font-size="10.5" fill="#f85149" font-weight="700" letter-spacing="0.06em">RACE WINDOW</text>
+    <line class="hairline" x1="14" y1="28" x2="248" y2="28"/>
+    <text x="14" y="44" fill="#c9d1d9" font-size="11" font-family="ui-monospace, monospace">read   <tspan fill="#7d8590">L142</tspan>  findByPk</text>
+    <text x="14" y="58" fill="#c9d1d9" font-size="11" font-family="ui-monospace, monospace">await  <tspan fill="#7d8590">L144</tspan>  save()</text>
+    <text x="14" y="72" fill="#c9d1d9" font-size="11" font-family="ui-monospace, monospace">write  <tspan fill="#7d8590">L145</tspan>  update()</text>
+  </g>
+  <!-- pointer leader -->
+  <path d="M635 480 L605 480" stroke="#6e1f24" stroke-width="1.4" fill="none"/>
+  <circle cx="605" cy="480" r="3" fill="#f85149"/>
+
+  <!-- code footer: peer flow -->
+  <line class="hairline" x1="80" y1="620" x2="918" y2="620"/>
+  <text class="muted" x="100" y="640" font-size="11.5">Concurrent writer in this cluster:</text>
+  <rect x="100" y="652" width="800" height="76" rx="6" fill="#0a0d12" stroke="#21262d"/>
+  <text class="val-mono" x="116" y="672" font-size="11.5" fill="#a5d6ff">server/commands/documentPermanentDeleter.ts</text>
+  <text class="muted-mono" x="116" y="690" font-size="11">writes documents.revision at L88 · L91</text>
+  <g font-family="ui-monospace, monospace" font-size="11.5">
+    <text x="116" y="712" class="txt">  <tspan class="kw">await</tspan> Document.<tspan class="fn">update</tspan>({ revision: doc.revision + <tspan class="num">1</tspan>, deletedAt: <tspan class="kw">new</tspan> Date() }, { where });</text>
+  </g>
+
+  <!-- ============ Right rail ============ -->
+
+  <!-- Suggested fix -->
+  <rect x="940" y="190" width="314" height="240" rx="10" class="panel"/>
+  <g transform="translate(960,212)">
+    <path d="M0 4 L4 0 L14 0 L18 4 L18 12 L9 18 L0 12 Z" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linejoin="round"/>
+  </g>
+  <text class="h2" x="988" y="226">Suggested fix</text>
+  <rect x="1186" y="208" width="50" height="18" rx="4" class="pill-purple"/>
+  <text class="pill-purple-t" x="1196" y="221" font-size="10">AI</text>
+  <text x="1212" y="221" fill="#d2a8ff" font-size="10" font-weight="600">DRAFT</text>
+
+  <text class="muted" x="960" y="246" font-size="11.5">Wrap read-modify-write in a transaction with row lock:</text>
+
+  <rect x="960" y="258" width="278" height="148" rx="6" fill="#0a0d12" stroke="#21262d"/>
+  <g font-family="ui-monospace, monospace" font-size="11" transform="translate(972,274)">
+    <text y="0" class="kw">await<tspan class="txt"> sequelize.</tspan><tspan class="fn">transaction</tspan><tspan class="txt">(</tspan><tspan class="kw">async</tspan><tspan class="txt"> (t) =&gt; {</tspan></text>
+    <text y="16" class="txt">  <tspan class="kw">const</tspan> doc = <tspan class="kw">await</tspan> Document.</text>
+    <text y="32" class="txt">    <tspan class="fn">findByPk</tspan>(id, {</text>
+    <text y="48" class="txt">      lock: t.LOCK.UPDATE,</text>
+    <text y="64" class="txt">      transaction: t,</text>
+    <text y="80" class="txt">    });</text>
+    <text y="96" class="txt">  doc.revision += <tspan class="num">1</tspan>;</text>
+    <text y="112" class="txt">  <tspan class="kw">await</tspan> doc.<tspan class="fn">save</tspan>({ transaction: t });</text>
+    <text y="128" class="txt">});</text>
+  </g>
+
+  <rect x="960" y="416" width="116" height="26" rx="6" class="btn-ghost"/>
+  <text class="btn-ghost-t" x="976" y="433" font-size="11.5">Copy snippet</text>
+  <rect x="1084" y="416" width="154" height="26" rx="6" class="btn-primary"/>
+  <text class="btn-primary-t" x="1100" y="433" font-size="11.5">Apply as PR draft</text>
+
+  <!-- Actions card -->
+  <rect x="940" y="446" width="314" height="118" rx="10" class="panel"/>
+  <text class="h2" x="960" y="470">Actions</text>
+  <line class="hairline" x1="960" y1="482" x2="1234" y2="482"/>
+
+  <g transform="translate(960,494)">
+    <rect width="274" height="28" rx="6" fill="transparent"/>
+    <circle cx="14" cy="14" r="7" fill="none" stroke="#c9d1d9" stroke-width="1.4"/>
+    <path d="M14 10 L14 14 L17 16" stroke="#c9d1d9" stroke-width="1.4" fill="none"/>
+    <text class="val" x="32" y="18" font-size="12.5">Snooze finding</text>
+    <text class="muted-mono" x="270" y="18" font-size="10" text-anchor="end">.snooze</text>
+  </g>
+  <line class="hairline" x1="960" y1="526" x2="1234" y2="526"/>
+
+  <g transform="translate(960,530)">
+    <rect width="274" height="28" rx="6" fill="transparent"/>
+    <rect x="9" y="6" width="14" height="12" rx="1.5" fill="none" stroke="#c9d1d9" stroke-width="1.4"/>
+    <path d="M9 18 L9 22 L23 22 L23 18" stroke="#c9d1d9" stroke-width="1.4" fill="none"/>
+    <text class="val" x="32" y="18" font-size="12.5">Copy fingerprint</text>
+    <text class="muted-mono" x="270" y="18" font-size="10" text-anchor="end">7a3f9c2e</text>
+  </g>
+
+  <!-- Related findings -->
+  <rect x="940" y="580" width="314" height="162" rx="10" class="panel"/>
+  <text class="h2" x="960" y="604">Related findings</text>
+  <text class="muted" x="960" y="620" font-size="11">same column · documents.revision</text>
+  <line class="hairline" x1="960" y1="630" x2="1234" y2="630"/>
+
+  <g transform="translate(960,640)">
+    <rect width="274" height="30" rx="6" fill="transparent"/>
+    <rect x="0" y="8" width="34" height="16" rx="3" class="pill-blue"/>
+    <text class="pill-blue-t" x="6" y="20" font-size="10">view</text>
+    <text class="val-mono" x="44" y="20" font-size="11.5">View.incrementCount()</text>
+    <text class="muted-mono" x="270" y="20" font-size="10.5" text-anchor="end">×1</text>
+  </g>
+  <line class="hairline" x1="960" y1="672" x2="1234" y2="672"/>
+
+  <g transform="translate(960,672)">
+    <rect width="274" height="30" rx="6" fill="transparent"/>
+    <rect x="0" y="8" width="62" height="16" rx="3" class="pill-blue"/>
+    <text class="pill-blue-t" x="6" y="20" font-size="10">attach-cnt</text>
+    <text class="val-mono" x="70" y="20" font-size="11.5">Attachment.touch()</text>
+    <text class="muted-mono" x="270" y="20" font-size="10.5" text-anchor="end">×2</text>
+  </g>
+  <line class="hairline" x1="960" y1="704" x2="1234" y2="704"/>
+
+  <g transform="translate(960,704)">
+    <rect width="274" height="30" rx="6" fill="transparent"/>
+    <rect x="0" y="8" width="48" height="16" rx="3" class="pill-blue"/>
+    <text class="pill-blue-t" x="6" y="20" font-size="10">star-ord</text>
+    <text class="val-mono" x="56" y="20" font-size="11.5">Star.reorder()</text>
+    <text class="muted-mono" x="270" y="20" font-size="10.5" text-anchor="end">×1</text>
+  </g>
+</svg>

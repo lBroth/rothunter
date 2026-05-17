@@ -1,0 +1,72 @@
+# RotHunter local stack.
+#
+# Usage:
+#   docker compose -f src/rothunter/docker/docker-compose.yml \
+#       up --build
+#
+#   Then open http://localhost:3000 in a browser. The mounted workspace
+#   defaults to the current working directory; override via:
+#
+#     ROTHUNTER_WORKSPACE_HOST=/path/to/repo docker compose ... up
+#
+# The llama.cpp sidecar downloads ~9 GB of weights on first boot and
+# pins them to the `rothunter-models` named volume so subsequent runs
+# start in seconds.
+
+services:
+  rothunter-llm:
+    # CPU image by default — runs on macOS / Linux / Windows without GPU
+    # drivers. ~3-15s per Tier-3 verdict on a modern laptop. For NVIDIA
+    # GPUs swap to `ghcr.io/ggml-org/llama.cpp:server-cuda` and uncomment
+    # the deploy.resources block below.
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: >
+      --hf-repo bartowski/Qwen2.5-Coder-14B-Instruct-GGUF
+      --hf-file Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf
+      --port 8080
+      --host 0.0.0.0
+      --jinja
+      -c 8192
+      -n 256
+    environment:
+      - LLAMA_ARG_HOST=0.0.0.0
+    volumes:
+      # llama.cpp's --hf-repo downloads via HF Hub which caches under
+      # ~/.cache/huggingface (NOT ~/.cache/llama.cpp). Mounting the wrong
+      # path silently forces a re-download every time the container is
+      # recreated — model is ~9 GB.
+      - rothunter-models:/root/.cache/huggingface
+    expose:
+      - "8080"
+    # Uncomment when running with NVIDIA GPUs (image swap above too):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
+  rothunter:
+    build:
+      context: ../../..
+      dockerfile: src/rothunter/docker/Dockerfile
+    depends_on:
+      rothunter-llm:
+        condition: service_healthy
+    environment:
+      ROTHUNTER_LLM_BASE_URL: http://rothunter-llm:8080/v1
+      ROTHUNTER_LLM_MODEL: bartowski/Qwen2.5-Coder-14B-Instruct-GGUF
+      ROTHUNTER_WORKSPACE: /workspace
+    volumes:
+      - ${ROTHUNTER_WORKSPACE_HOST:-../../..}:/workspace:rw
+    ports:
+      - "3000:3000"
+
+volumes:
+  rothunter-models:
