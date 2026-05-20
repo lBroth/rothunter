@@ -150,5 +150,4 @@ vite.config.ts.timestamp-*
 .rothunter/
 
 # Editor / OS junk
-.DS_Store
 *.swp
