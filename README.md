@@ -32,39 +32,61 @@ Full detector list with severities + tunables: [`docs/DETECTORS.md`](./docs/DETE
 | Single-workspace | All 24 |
 | Multi-workspace (cross-repo via `rothunter.config.json`) | 9 cross-repo always-on (duplicate-type, duplicate-function, dead-module, dead-export, dead-api, long-function, deep-nesting, public-any, hot-hub-file) + the remaining 15 looped per workspace with workspace-namespaced fingerprints |
 
+## What you actually get
+
+rothunter has TWO independent pieces:
+
+| Piece | What it does | Where it runs |
+|---|---|---|
+| **Engine + dashboard** (`rothunter`) | parses your repo, runs 24 detectors, serves the Fastify API + React UI on `:3000` | this is what the npm package / docker image ships |
+| **LLM** (any OpenAI-compatible endpoint) | answers the verdict prompts ("is this finding real or intentional?") — typically `llama.cpp` with Qwen2.5-Coder-14B | runs separately, you point rothunter at it |
+
+The engine runs WITHOUT the LLM — the deterministic detectors still
+fire, you just don't get the verdict pass that auto-filters the FPs.
+So the question every install path answers is: "do you want me to
+also start an LLM, or are you bringing your own?"
+
 ## Quick start
 
 Three paths. Pick one — they all end at <http://localhost:3000>.
 
-### 1. Docker (fastest, no clone)
+### 1. Docker Compose — everything bundled
 
-```bash
-# scan the repo in $(pwd) — needs an LLM endpoint
-docker run --rm -p 3000:3000 \
-  -v "$(pwd):/workspace" \
-  -e ROTHUNTER_LLM_BASE_URL="$LLM_URL" \
-  ghcr.io/lbroth/rothunter:latest
-```
-
-No `ROTHUNTER_LLM_BASE_URL`? Use the compose stack — it ships an
-llama.cpp sidecar that downloads a 9 GB model on first boot:
+Engine + UI + llama.cpp + 9 GB model download on first boot, all in
+one stack. Slowest first-run; zero pieces to install.
 
 ```bash
 git clone https://github.com/lBroth/rothunter && cd rothunter
 ROTHUNTER_WORKSPACE_HOST=/path/to/your-repo npm run docker
 ```
 
-### 2. npx (no Docker)
+### 2. `docker run` or `npx` — engine only, BYO LLM
+
+Use this when you already have an OpenAI-compatible LLM endpoint
+(vLLM / Ollama / LM Studio / OpenRouter / a colleague's box) OR you
+prefer to run llama.cpp yourself.
 
 ```bash
-# server + UI on :3000; point at any OpenAI-compatible LLM endpoint
-ROTHUNTER_LLM_BASE_URL=http://127.0.0.1:8080/v1 \
-  npx @lbroth/rothunter
+# docker — no clone, no node install
+docker run --rm -p 3000:3000 \
+  -v "$(pwd):/workspace" \
+  -e ROTHUNTER_LLM_BASE_URL="http://host.docker.internal:8080/v1" \
+  ghcr.io/lbroth/rothunter:latest
+
+# OR npx — no docker, just node ≥ 24
+ROTHUNTER_LLM_BASE_URL="http://127.0.0.1:8080/v1" \
+  npx @lbroth/rothunter@next
 ```
 
-The npx flow boots only the server + dashboard. Run the LLM yourself
-with `brew install llama.cpp && llama-server --hf-repo bartowski/Qwen2.5-Coder-14B-Instruct-GGUF` (or aim
-`ROTHUNTER_LLM_BASE_URL` at vLLM / OpenRouter / LM Studio).
+To boot llama.cpp yourself (one-time setup):
+
+```bash
+brew install llama.cpp       # macOS — Linux: see ggml-org/llama.cpp
+llama-server \
+  --hf-repo bartowski/Qwen2.5-Coder-14B-Instruct-GGUF \
+  --hf-file Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf \
+  --host 127.0.0.1 --port 8080 --jinja -c 8192 -n 256
+```
 
 ### 3. Clone + dev mode (contributor flow)
 
