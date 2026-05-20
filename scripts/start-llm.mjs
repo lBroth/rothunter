@@ -27,6 +27,12 @@ const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..');
 const MODEL_LLAMACPP_REPO = process.env.ROTHUNTER_LLM_MODEL ?? 'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF';
 const MODEL_LLAMACPP_FILE = process.env.ROTHUNTER_LLM_MODEL_FILE ?? 'Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf';
 const PORT = process.env.ROTHUNTER_LLM_PORT ?? '8080';
+// Loopback by default — the llama-server endpoint has no auth, so
+// `--host 0.0.0.0` would let anyone on the LAN use the GPU and read
+// the prompts we send. Override with `ROTHUNTER_LLM_HOST=0.0.0.0`
+// only when you intentionally want LAN access (and ideally only
+// behind a reverse proxy / VPN).
+const HOST = process.env.ROTHUNTER_LLM_HOST ?? '127.0.0.1';
 
 function has(cmd) {
   return spawnSync('which', [cmd], { stdio: 'ignore' }).status === 0;
@@ -91,7 +97,7 @@ switch (backend) {
         '--hf-repo', MODEL_LLAMACPP_REPO,
         '--hf-file', MODEL_LLAMACPP_FILE,
         '--port', PORT,
-        '--host', '0.0.0.0',
+        '--host', HOST,
         '--jinja',
         '-c', '8192',
         '-n', '256',

@@ -196,9 +196,17 @@ export function createDefaultLlmClient(): LlmClient {
   // Marker beats the hard-coded default but loses to an explicit env
   // override. Operator wins, automation second, default last.
   const marker = readLlmMarker();
+  // Marker file lives under $HOME, so it could be doctored by another
+  // process running as the same user. Validate `port` is an integer
+  // in the legal TCP-port range before interpolating into a URL so a
+  // hostile marker can't redirect the engine at an arbitrary host.
+  const markerPort =
+    marker?.port && /^\d{1,5}$/.test(marker.port) && Number(marker.port) > 0 && Number(marker.port) <= 65_535
+      ? marker.port
+      : undefined;
   const baseUrl =
     process.env.ROTHUNTER_LLM_BASE_URL ??
-    (marker?.port ? `http://127.0.0.1:${marker.port}/v1` : undefined);
+    (markerPort ? `http://127.0.0.1:${markerPort}/v1` : undefined);
   const model = process.env.ROTHUNTER_LLM_MODEL ?? marker?.model;
   return new LlmClient({
     baseUrl,

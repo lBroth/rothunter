@@ -5,15 +5,19 @@ on:
     tags:
       - 'v*'
 
+# Workflow-default = least privilege. Each job opts into the scopes
+# it actually needs (id-token only on npm-publish for provenance,
+# packages:write only on docker-publish for GHCR).
 permissions:
   contents: read
-  packages: write
-  id-token: write
 
 jobs:
   npm-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,6 +35,9 @@ jobs:
   docker-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3

@@ -149,5 +149,9 @@ vite.config.ts.timestamp-*
 # rothunter runtime state — scan history, FP store, kept-open, marked-to-fix
 .rothunter/
 
+# Token-bearing npm config — never commit
+.npmrc
+!.npmrc.example
+
 # Editor / OS junk
 *.swp
