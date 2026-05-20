@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MlxLlmClient, createDefaultLlmClient } from '../adapters/mlx-llm.js';
+import { LlmClient, createDefaultLlmClient } from '../adapters/llm.js';
 import { parseLlmJsonResponse } from '../utils/llm-json.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -80,10 +80,10 @@ function renderSites(sites: ApiRaceCheckInput['sites']): string {
 }
 
 export class ApiRaceConfirmer {
-  private llm: MlxLlmClient;
+  private llm: LlmClient;
   private cache = new Map<string, ApiRaceVerdict>();
 
-  constructor(llm?: MlxLlmClient) {
+  constructor(llm?: LlmClient) {
     this.llm = llm ?? createDefaultLlmClient();
   }
 

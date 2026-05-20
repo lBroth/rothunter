@@ -5,7 +5,7 @@ import type { Project } from 'ts-morph';
 /**
  * Build a fast workspace-relative source reader. File-walking detectors
  * (magic-numbers, console-log-prod, silent-catch, skip-tests, bad-config,
- * long-file, mutable-globals, secret-leak, …) used to readFileSync every
+ * long-file, mutable-globals, …) used to readFileSync every
  * candidate file independently — the orchestrator already parsed those
  * same files into a shared ts-morph Project, so the disk I/O was pure
  * duplication. When a Project is passed, this reader serves text from

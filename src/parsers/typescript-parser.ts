@@ -20,6 +20,7 @@ import {
   type VariableDeclaration,
 } from 'ts-morph';
 import { logger } from '../utils/logger.js';
+import { loadGitignore } from '../utils/gitignore.js';
 import { resolveImport, type ImportRecord } from '../graph/import-graph.js';
 import { loadTsconfigPaths } from '../graph/tsconfig-paths.js';
 import type { FieldStructure, FunctionStructure, SymbolRecord, TypeStructure } from '../types.js';
@@ -71,7 +72,13 @@ export class TypeScriptParser {
       }
     }
 
-    const ignore = opts.ignore ?? ['node_modules', 'dist', 'build', 'coverage'];
+    // File exclusions come exclusively from `.gitignore` + the
+    // workspace's `.rothunterignore` (gitignore-syntax extension).
+    // The matcher bakes in `node_modules` + `.git` so we keep sane
+    // defaults even on workspaces that ship no ignore file. Operator
+    // tunes everything else through their own `.gitignore` —
+    // rothunter never carries a parallel skip list that drifts.
+    const gitignore = loadGitignore(opts.workspaceRoot);
 
     // Load tsconfig path aliases once per workspace — used by resolveImport
     // for bare specifiers like `@/foo`, `~/bar`, `@app/lib`.
@@ -82,9 +89,8 @@ export class TypeScriptParser {
     const files: string[] = [];
     for (const sourceFile of project.getSourceFiles()) {
       const filePath = sourceFile.getFilePath();
-      if (!opts.includeNodeModules && ignore.some((p) => filePath.includes(`/${p}/`))) continue;
-
       const relativeFile = path.relative(opts.workspaceRoot, filePath);
+      if (gitignore.ignores(relativeFile.replace(/\\/g, '/'))) continue;
       files.push(relativeFile);
 
       for (const iface of sourceFile.getInterfaces()) {

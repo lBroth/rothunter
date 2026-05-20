@@ -41,8 +41,6 @@ export const DETECTOR_IDS = [
   'unused-deps',
   'similar-functions',
   'todo-comments',
-  'secret-leak',
-  'same-name-evolution',
 ] as const;
 
 export type DetectorId = (typeof DETECTOR_IDS)[number];
@@ -69,8 +67,6 @@ export const MULTI_WORKSPACE_SKIPPED = new Set<DetectorId>([
   'unused-deps',
   'similar-functions',
   'todo-comments',
-  'secret-leak',
-  'same-name-evolution',
 ]);
 
 /**

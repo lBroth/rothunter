@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { logger } from './utils/logger.js';
 import { DuplicateTypeDetector } from './detectors/duplicate-type.js';
 import { DuplicateFunctionDetector } from './detectors/duplicate-function.js';
@@ -24,27 +25,24 @@ import { detectUnusedDeps } from './detectors/unused-deps.js';
 import { detectHotHubFiles } from './detectors/hot-hub-file.js';
 import { detectSimilarFunctions } from './detectors/similar-functions.js';
 import { detectTodoComments } from './detectors/todo-comments.js';
-import { detectSecretLeaks } from './detectors/secret-leak.js';
-import { detectSameNameEvolution } from './detectors/same-name-evolution.js';
 import { TypeScriptParser, type ParseOptions } from './parsers/typescript-parser.js';
 import { TypeNormalizer } from './normalizers/type-normalizer.js';
 import { buildImportGraph, reachableFrom } from './graph/import-graph.js';
-import { discoverEntryPoints } from './graph/entry-points.js';
+import { discoverEntryPoints, isPublishedLibrary } from './graph/entry-points.js';
+import { readProjectConventions } from './utils/project-conventions.js';
 import { resolveIacEntryFiles } from './graph/iac-entries.js';
 import { resolveDecoratorEntryFiles } from './graph/decorator-entries.js';
 import type { Detector, Finding, SymbolRecord } from './types.js';
-import type { MlxLlmClient } from './adapters/mlx-llm.js';
-import { applySnooze, loadSnooze, type SnoozeFile } from './snooze.js';
-import { loadRotHunterConfig } from './config.js';
+import type { LlmClient } from './adapters/llm.js';
+import { loadRotHunterConfig, type WorkspaceConfig } from './config.js';
+import { Project } from 'ts-morph';
 import { scanWorkspaces } from './multi-workspace-scanner.js';
 
 export interface RotHunterRunOptions extends ParseOptions {
   /** Drop a finding below `severity:'low'` when post-LLM confidence falls under this threshold. */
   llmRejectionThreshold?: number;
-  /** Override the LLM client (tests, alternative model pools). Production uses the default MlxLlmClient. */
-  llm?: MlxLlmClient;
-  /** Skip loading `.rothunterignore` (tests / one-off "show everything" runs). */
-  ignoreSnoozeFile?: boolean;
+  /** Override the LLM client (tests, alternative model pools). Production uses the default LlmClient. */
+  llm?: LlmClient;
   /**
    * Optional allow-list of detector ids. When set, findings from detectors
    * outside this list are dropped BEFORE the LLM confirmation pass — the
@@ -58,18 +56,33 @@ export interface RotHunterRunOptions extends ParseOptions {
    * Number of LLM verdicts in flight at once. 1 = sequential
    * (original behaviour, safe). 4-8 is a good default on llama.cpp run
    * with `--parallel N -cb` (continuous batching) or on vLLM (dynamic
-   * batching is on by default). Mlx_lm.server serialises internally so
-   * keep this at 1 for that backend.
+   * batching is on by default).
    *
    * Defaults to `ROTHUNTER_LLM_CONCURRENCY` env var, then 1.
    */
   llmConcurrency?: number;
+  /**
+   * Confidence floor at which a negative LLM verdict routes a finding
+   * into the auto-FP bucket. Defaults to `LLM_FP_THRESHOLD` (0.6) — set
+   * lower to be more aggressive (almost every "intentional" LLM call
+   * auto-FPs) or higher (only very-confident verdicts route, the rest
+   * stay open at degraded confidence).
+   */
+  llmAutoFpThreshold?: number;
   /**
    * Optional callback invoked at scan checkpoints. Used by the rothunter
    * HTTP server to stream live progress over SSE. Never throws — exceptions
    * inside the callback are caught and logged.
    */
   onProgress?: (event: ScanProgressEvent) => void;
+  /**
+   * Optional cooperative cancellation. The orchestrator checks
+   * `abortSignal.aborted` between LLM verdict tasks and aborts the
+   * worker pool when the signal fires. Used by the HTTP server's
+   * /api/scans/:scanId/cancel endpoint to free the scan slot promptly
+   * instead of relying on the (lossy) "throw inside onProgress" path.
+   */
+  abortSignal?: AbortSignal;
 }
 
 // SSE-emitted scan-lifecycle events.
@@ -78,17 +91,11 @@ export type ScanProgressEvent =
   | { state: 'detecting'; detector: string }
   | { state: 'llm-start'; total: number }
   | { state: 'llm-verdict'; done: number; total: number; detectorId: string; race: boolean; confidence: number; reason: string; latencyMs: number; cluster?: string }
-  | { state: 'snooze'; kept: number; snoozed: number }
   | { state: 'done'; findings: number; durationMs: number };
 
 export interface RotHunterResult {
   symbols: SymbolRecord[];
-  /** Findings to report after snooze. */
   findings: Finding[];
-  /** Findings filtered out by `.rothunterignore`. */
-  snoozed: Finding[];
-  /** Snooze file metadata (path + size), useful for the CLI to log. */
-  snooze: SnoozeFile;
   durationMs: number;
 }
 
@@ -255,11 +262,24 @@ export class RotHunter {
           for (const f of wsFindings) {
             for (const ev of f.evidence) ev.file = `${wsPrefix}${ev.file}`;
             // Namespace the fingerprint by workspace so two workspaces with
-            // identically-named files don't collide in the snooze + FP store.
+            // identically-named files don't collide in the FP store.
             f.fingerprint = `${ws.name}:${f.fingerprint}`;
           }
           findings.push(...wsFindings);
         }
+        // Cross-workspace race-condition pass. shared-db-write +
+        // api-race fire when ≥ 2 distinct files write the same DB
+        // column / hit the same API endpoint — exactly the cross-
+        // service race shape that lives between packages in a
+        // monorepo (billing-service writes user.tier in one repo,
+        // account-service writes it from another). Running these
+        // per-workspace misses every cross-service race because each
+        // package has only one writer locally.
+        const crossFindings = await runCrossWorkspaceRaceDetectors(
+          config.workspaces,
+          emit,
+        );
+        findings.push(...crossFindings);
       }
     }
 
@@ -294,24 +314,23 @@ export class RotHunter {
       1,
       Math.min(16, Math.floor(opts.llmConcurrency ?? (Number.isFinite(envConc) && envConc > 0 ? envConc : 1))),
     );
-    await this.runLlmConfirmation(findings, symbols, threshold, opts.llm, emit, llmConcurrency);
-
-    const snooze = opts.ignoreSnoozeFile
-      ? { path: '', fingerprints: new Set<string>(), exists: false }
-      : loadSnooze(opts.workspaceRoot);
-    const { kept, snoozed } = applySnooze(findings, snooze);
-    if (snoozed.length > 0) {
-      logger.info({ count: snoozed.length, file: snooze.path }, 'RotHunter: applied .rothunterignore');
-    }
-    emit({ state: 'snooze', kept: kept.length, snoozed: snoozed.length });
+    await this.runLlmConfirmation(
+      findings,
+      symbols,
+      threshold,
+      opts.llm,
+      emit,
+      llmConcurrency,
+      opts.abortSignal,
+      opts.workspaceRoot,
+      opts.llmAutoFpThreshold,
+    );
 
     const durationMs = Date.now() - startedAt;
-    emit({ state: 'done', findings: kept.length, durationMs });
+    emit({ state: 'done', findings: findings.length, durationMs });
     return {
       symbols,
-      findings: kept,
-      snoozed,
-      snooze,
+      findings,
       durationMs,
     };
   }
@@ -320,16 +339,21 @@ export class RotHunter {
     findings: Finding[],
     symbols: SymbolRecord[],
     threshold: number,
-    injectedLlm?: MlxLlmClient,
+    injectedLlm?: LlmClient,
     emit?: (event: ScanProgressEvent) => void,
     concurrency = 1,
+    abortSignal?: AbortSignal,
+    workspaceRoot?: string,
+    llmAutoFpThreshold?: number,
   ): Promise<void> {
+    const autoFpThreshold = llmAutoFpThreshold ?? LLM_FP_THRESHOLD;
     const { LlmConfirmer } = await import('./extraction/llm-confirmer.js');
     const { MutationConfirmer } = await import('./extraction/mutation-confirmer.js');
     const { RaceConfirmer } = await import('./extraction/race-confirmer.js');
     const { SharedDbWriteConfirmer } = await import('./extraction/shared-db-write-confirmer.js');
     const { ApiRaceConfirmer } = await import('./extraction/api-race-confirmer.js');
-    const { createDefaultLlmClient } = await import('./adapters/mlx-llm.js');
+    const { TriageConfirmer } = await import('./extraction/triage-confirmer.js');
+    const { createDefaultLlmClient } = await import('./adapters/llm.js');
 
     const symbolById = new Map(symbols.map((s) => [s.id, s]));
     const candidates = findings.filter((f) => requiresLlmConfirmation(f, symbolById));
@@ -337,13 +361,22 @@ export class RotHunter {
     if (candidates.length === 0) return;
 
     const llm = injectedLlm ?? createDefaultLlmClient();
-    logger.info({ count: candidates.length }, 'RotHunter: warming up MLX-LM');
-    await llm.warmup();
+    logger.info({ count: candidates.length }, 'RotHunter: warming up LLM');
+    const llmReady = await llm.warmup();
+    if (!llmReady) {
+      // No LLM reachable — skip the confirmation pass entirely so we
+      // don't burn N × verdict-timeout on a scan that has no oracle.
+      // Findings stay at their deterministic severity / confidence.
+      logger.warn({ count: candidates.length }, 'RotHunter: LLM warmup failed; skipping confirmation pass');
+      emit?.({ state: 'llm-start', total: 0 });
+      return;
+    }
     const dupConfirmer = new LlmConfirmer(llm);
     const mutationConfirmer = new MutationConfirmer(llm);
     const raceConfirmer = new RaceConfirmer(llm);
     const sharedDbConfirmer = new SharedDbWriteConfirmer(llm);
     const apiRaceConfirmer = new ApiRaceConfirmer(llm);
+    const triageConfirmer = new TriageConfirmer(llm);
     logger.info({ count: candidates.length }, 'RotHunter: LLM confirmation pass');
     emit?.({ state: 'llm-start', total: candidates.length });
 
@@ -381,7 +414,10 @@ export class RotHunter {
         const b = symbolById.get(ids[1]!);
         if (!a || !b) return;
 
-        const result = await dupConfirmer.confirmSameConcept(a, b);
+        const projectConv = workspaceRoot
+          ? readProjectConventions(workspaceRoot, a.file)
+          : undefined;
+        const result = await dupConfirmer.confirmSameConcept(a, b, projectConv);
         if (!result) return;
 
         if (result.same_concept) {
@@ -393,6 +429,17 @@ export class RotHunter {
           finding.description += `\n\n**LLM rejection:** ${result.reason} — not considered a domain duplicate.`;
           if (finding.confidence < threshold) {
             finding.severity = 'low';
+          }
+          // Same auto-FP routing as TriageConfirmer-driven detectors:
+          // a high-confidence negative verdict means the LLM is sure
+          // these are not the same concept (framework idiom, env-helper
+          // symmetry that project conventions endorse, …) — moving
+          // them out of the open list matches the user's expectation.
+          if (result.confidence >= autoFpThreshold) {
+            finding.llmFalsePositive = {
+              confidence: result.confidence,
+              reason: result.reason,
+            };
           }
         }
         reportVerdict(finding, result.same_concept, result.confidence, result.reason, Date.now() - verdictStart);
@@ -429,7 +476,7 @@ export class RotHunter {
         applyClusterVerdict(
           finding,
           { positive: verdict.race, confidence: verdict.confidence, reason: verdict.reason },
-          { threshold, positiveLabel: 'real cross-flow API race', negativeLabel: 'safe' },
+          { threshold, positiveLabel: 'real cross-flow API race', negativeLabel: 'safe', autoFpThreshold },
         );
         reportVerdict(finding, verdict.race, verdict.confidence, verdict.reason, Date.now() - verdictStart);
       } else if (finding.detectorId === 'shared-db-write') {
@@ -465,7 +512,7 @@ export class RotHunter {
         applyClusterVerdict(
           finding,
           { positive: verdict.race, confidence: verdict.confidence, reason: verdict.reason },
-          { threshold, positiveLabel: 'real cross-flow race', negativeLabel: 'safe' },
+          { threshold, positiveLabel: 'real cross-flow race', negativeLabel: 'safe', autoFpThreshold },
         );
         reportVerdict(finding, verdict.race, verdict.confidence, verdict.reason, Date.now() - verdictStart);
       } else if (finding.detectorId === 'race-condition') {
@@ -496,7 +543,7 @@ export class RotHunter {
         applyClusterVerdict(
           finding,
           { positive: verdict.race, confidence: verdict.confidence, reason: verdict.reason },
-          { threshold, positiveLabel: 'real race', negativeLabel: 'safe' },
+          { threshold, positiveLabel: 'real race', negativeLabel: 'safe', autoFpThreshold },
         );
         reportVerdict(finding, verdict.race, verdict.confidence, verdict.reason, Date.now() - verdictStart);
       } else if (finding.detectorId === 'mutation') {
@@ -530,9 +577,36 @@ export class RotHunter {
         applyClusterVerdict(
           finding,
           { positive: !verdict.intentional, confidence: verdict.confidence, reason: verdict.reason },
-          { threshold, positiveLabel: 'potential bug', negativeLabel: 'intentional' },
+          { threshold, positiveLabel: 'potential bug', negativeLabel: 'intentional', autoFpThreshold },
         );
         reportVerdict(finding, !verdict.intentional, verdict.confidence, verdict.reason, Date.now() - verdictStart);
+      } else if (TRIAGE_DETECTORS.has(finding.detectorId)) {
+        // Generic real-vs-FP triage for detectors with no cluster
+        // confirmer of their own. For reachability + hub detectors we
+        // ALSO pass structural context (sibling signatures, file role)
+        // so the LLM can answer "is this used through a type surface
+        // or framework convention" without guessing from the snippet.
+        const ev = finding.evidence[0];
+        if (!ev) return;
+        const verdict = await triageConfirmer.confirm({
+          detectorId: finding.detectorId,
+          severity: finding.severity,
+          title: finding.title,
+          description: finding.description,
+          suggestion: finding.suggestion,
+          evidenceFile: ev.file,
+          evidenceStartLine: ev.range.startLine,
+          evidenceEndLine: ev.range.endLine,
+          evidenceSnippet: ev.snippet,
+          extraContext: buildTriageContext(finding, symbolById, workspaceRoot),
+        });
+        if (!verdict) return;
+        applyClusterVerdict(
+          finding,
+          { positive: verdict.real, confidence: verdict.confidence, reason: verdict.reason },
+          { threshold, positiveLabel: 'real defect', negativeLabel: 'intentional pattern', autoFpThreshold },
+        );
+        reportVerdict(finding, verdict.real, verdict.confidence, verdict.reason, Date.now() - verdictStart);
       }
     };
 
@@ -540,10 +614,18 @@ export class RotHunter {
     // off the shared cursor and awaits its verdict — the LLM backend
     // dictates real throughput (llama.cpp `--parallel N -cb`, vLLM dynamic
     // batching). Concurrency 1 reproduces the original sequential flow.
+    //
+    // Cancellation: workers re-check `abortSignal.aborted` before
+    // every verdict task. This is the only reliable abort path — the
+    // old "throw inside onProgress" trick was swallowed by `emit()`'s
+    // catch and never reached the pool, so cancelled scans kept
+    // burning LLM calls (and blocking the queue) until they ran out
+    // of findings.
     logger.info({ concurrency }, 'RotHunter: LLM concurrency');
     let cursor = 0;
     const workers = Array.from({ length: concurrency }, async () => {
       while (true) {
+        if (abortSignal?.aborted) return;
         const idx = cursor++;
         if (idx >= candidates.length) return;
         try {
@@ -559,6 +641,9 @@ export class RotHunter {
       }
     });
     await Promise.all(workers);
+    if (abortSignal?.aborted) {
+      throw new Error('scan cancelled by operator');
+    }
   }
 }
 
@@ -587,6 +672,70 @@ interface WorkspaceLocalCtx {
   symbols: ReadonlyArray<SymbolRecord>;
   iacEntries: ReadonlySet<string>;
   emit: (event: ScanProgressEvent) => void;
+}
+
+/**
+ * Run shared-db-write + api-race once across EVERY package in a
+ * monorepo so cross-service races (different packages writing the
+ * same DB column / hitting the same endpoint) are caught. The per-
+ * workspace pass cannot see them because each package has only one
+ * writer locally — the race lives at the merged-set level.
+ *
+ * Evidence file paths are emitted as `packages/<pkg>/src/...`
+ * (workspace-relative against the monorepo root), so the dashboard
+ * shows the literal filesystem location of each writer.
+ */
+async function runCrossWorkspaceRaceDetectors(
+  workspaces: WorkspaceConfig[],
+  emit: (event: ScanProgressEvent) => void,
+): Promise<Finding[]> {
+  if (workspaces.length < 2) return [];
+  const project = new Project({
+    skipAddingFilesFromTsConfig: true,
+    skipFileDependencyResolution: true,
+    compilerOptions: { allowJs: true, jsx: 4 /* preserve */ },
+  });
+  for (const ws of workspaces) {
+    project.addSourceFilesAtPaths([
+      `${ws.rootAbs}/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}`,
+      `!${ws.rootAbs}/**/node_modules/**`,
+      `!${ws.rootAbs}/**/dist/**`,
+      `!${ws.rootAbs}/**/build/**`,
+    ]);
+  }
+  // Common root for all workspaces — used so detector evidence paths
+  // come out as `packages/<pkg>/src/...` instead of an absolute path.
+  const root = commonAncestor(workspaces.map((w) => w.rootAbs));
+  const out: Finding[] = [];
+  emit({ state: 'detecting', detector: 'cross-shared-db-write' });
+  out.push(
+    ...detectSharedDbWrites({ workspaceRoot: root, files: [], project }).map(tagCross),
+  );
+  emit({ state: 'detecting', detector: 'cross-api-race' });
+  out.push(
+    ...detectApiRaces({ workspaceRoot: root, files: [], project }).map(tagCross),
+  );
+  return out;
+}
+
+function tagCross(f: Finding): Finding {
+  // Distinct fingerprint prefix so cross-workspace findings never
+  // collide with same-detector findings from the per-workspace pass.
+  return { ...f, fingerprint: `cross-ws:${f.fingerprint}` };
+}
+
+function commonAncestor(paths: string[]): string {
+  if (paths.length === 0) return '';
+  if (paths.length === 1) return paths[0]!;
+  const split = paths.map((p) => p.split('/'));
+  const min = Math.min(...split.map((s) => s.length));
+  const out: string[] = [];
+  for (let i = 0; i < min; i++) {
+    const seg = split[0]![i]!;
+    if (split.every((s) => s[i] === seg)) out.push(seg);
+    else break;
+  }
+  return out.join('/') || '/';
 }
 
 async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Finding[]> {
@@ -645,10 +794,6 @@ async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Findi
   // todo-comments does its own workspace walk so it picks up Python / Go /
   // shell sources the TS parser skips. No `files` arg by design.
   run('todo-comments', () => detectTodoComments({ workspaceRoot: ctx.workspaceRoot }));
-  run('secret-leak', () =>
-    detectSecretLeaks({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
-  run('same-name-evolution', () =>
-    detectSameNameEvolution({ workspaceRoot: ctx.workspaceRoot, symbols: symbolsArr }));
 
   return findings;
 }
@@ -665,7 +810,13 @@ async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Findi
 export function applyClusterVerdict(
   finding: Finding,
   verdict: { positive: boolean; confidence: number; reason: string },
-  opts: { threshold: number; positiveLabel: string; negativeLabel: string },
+  opts: {
+    threshold: number;
+    positiveLabel: string;
+    negativeLabel: string;
+    /** Auto-FP routing floor. Defaults to LLM_FP_THRESHOLD (0.6). */
+    autoFpThreshold?: number;
+  },
 ): void {
   const confTxt = verdict.confidence.toFixed(2);
   if (verdict.positive) {
@@ -678,8 +829,208 @@ export function applyClusterVerdict(
     finding.confidence = Math.max(0.0, finding.confidence * (1 - verdict.confidence));
     finding.description += `\n\n**LLM verdict:** ${opts.negativeLabel} — ${verdict.reason} (confidence ${confTxt})`;
     if (finding.confidence < opts.threshold) finding.severity = 'low';
+    // High-confidence "intentional" / "not real" verdict — auto-route to
+    // the FP bucket so the user does not have to manually mark each one.
+    // The detector pattern matched but the LLM saw the surrounding intent
+    // (accumulator parameter, deliberate-swallow comment, framework idiom,
+    // …). Surfacing it as an open finding teaches the user that high
+    // verdict confidence means nothing — exactly the rothunter-vs-lint
+    // differentiator we want to preserve.
+    if (verdict.confidence >= (opts.autoFpThreshold ?? LLM_FP_THRESHOLD)) {
+      finding.llmFalsePositive = {
+        confidence: verdict.confidence,
+        reason: verdict.reason,
+      };
+    }
   }
   finding.layer = 3;
+}
+
+/**
+ * Verdict-confidence floor at which a negative LLM verdict moves a
+ * finding into the auto-FP bucket. Set low (0.6) so any reasonably
+ * confident "intentional / FP" verdict routes the finding out of the
+ * open list — the operator's stated preference is "if the LLM says
+ * FP, treat it as auto FP, I'll un-mark if it's wrong". Below 0.6 the
+ * LLM is genuinely undecided and the deterministic finding stays in
+ * the open list at degraded confidence.
+ */
+export const LLM_FP_THRESHOLD = 0.6;
+
+/**
+ * Build per-detector structural context to attach to a TriageConfirmer
+ * call. The shape is free-form text — the LLM reads it alongside the
+ * primary evidence snippet — so we can evolve enrichment without
+ * version-coupling the triage schema. Returns `undefined` when no
+ * useful context is available so the prompt stays compact.
+ */
+export function buildTriageContext(
+  finding: Finding,
+  symbolById: Map<string, SymbolRecord>,
+  workspaceRoot?: string,
+): string | undefined {
+  const ev = finding.evidence[0];
+  if (!ev) return undefined;
+  const parts: string[] = [];
+  // Project conventions block: nearest CLAUDE.md walking up from the
+  // evidence file. Universally prepended to every triage call — it is
+  // the single biggest signal for "is this pattern intentional in
+  // THIS codebase". A rule like "three similar lines better than
+  // premature abstraction" turns duplicate-function on Commander
+  // command registrations into an auto-FP without per-detector code.
+  if (workspaceRoot) {
+    const conv = readProjectConventions(workspaceRoot, ev.file);
+    if (conv) {
+      parts.push(
+        `Project conventions (concatenated from CLAUDE.md / AGENTS.md / .cursorrules / copilot-instructions.md / CONTRIBUTING.md / … as present — treat as authoritative for this codebase, override generic best-practice when they conflict):\n${conv}`,
+      );
+    }
+  }
+  // Per-detector structural hints.
+  const detectorContext = buildDetectorContext(finding, ev, symbolById, workspaceRoot);
+  if (detectorContext) parts.push(detectorContext);
+  if (parts.length === 0) return undefined;
+  return parts.join('\n\n');
+}
+
+function buildDetectorContext(
+  finding: Finding,
+  ev: Finding['evidence'][number],
+  symbolById: Map<string, SymbolRecord>,
+  workspaceRoot?: string,
+): string | undefined {
+  if (finding.detectorId === 'dead-export') {
+    return buildDeadExportContext(finding, ev.file, symbolById, workspaceRoot);
+  }
+  if (finding.detectorId === 'magic-numbers' && workspaceRoot) {
+    return buildMagicNumbersContext(ev.file, ev.range.startLine, workspaceRoot, symbolById);
+  }
+  if (finding.detectorId === 'hot-hub-file') {
+    return 'This file is being flagged as an import hub. Decide whether the project deliberately keeps it as a single import surface (barrel / type surface) or whether it accumulates unrelated concerns.';
+  }
+  if (finding.detectorId === 'long-file') {
+    return 'Look at the snippet shape: a recognizer / config / pattern TABLE is single-concern locality and FALSE positive; mixed unrelated logic accumulating across many features is REAL.';
+  }
+  if (finding.detectorId === 'todo-comments') {
+    return 'Discriminate actionable TODO / FIXME / HACK / XXX from documentary NOTE comments. A NOTE that explains a design decision in adjacent code is documentation, not technical debt.';
+  }
+  return undefined;
+}
+
+/**
+ * For a magic-numbers finding, return: the enclosing function /
+ * method signature (so the LLM sees what domain the literal is in),
+ * an ±8 line code window, and the leading JSDoc-style comment block
+ * if one is present immediately above the enclosing function. The
+ * snippet the detector emits is only the matching line — context is
+ * too thin for the LLM to judge whether `12`, `127`, or `425` is a
+ * domain constant, a regex internal, or a real magic number.
+ */
+function buildMagicNumbersContext(
+  file: string,
+  line: number,
+  workspaceRoot: string,
+  symbolById: Map<string, SymbolRecord>,
+): string | undefined {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(path.join(workspaceRoot, file), 'utf-8');
+  } catch {
+    return undefined;
+  }
+  const lines = raw.split('\n');
+  if (line < 1 || line > lines.length) return undefined;
+  // Find the symbol that contains this line — gives us the enclosing
+  // function/method signature regardless of indentation depth.
+  let enclosingSig: string | undefined;
+  let enclosingDoc: string | undefined;
+  for (const s of symbolById.values()) {
+    if (s.file !== file) continue;
+    if (line < s.range.startLine || line > s.range.endLine) continue;
+    // Prefer the tightest match (deepest nesting).
+    if (
+      enclosingSig &&
+      (s.range.endLine - s.range.startLine) >
+        (lines.findIndex((_, i) => i + 1 === line) - s.range.startLine)
+    ) {
+      continue;
+    }
+    enclosingSig = (lines[s.range.startLine - 1] ?? '').trim();
+    // Walk upward from the symbol decl for a contiguous comment block
+    // — JSDoc usually lives on the line(s) immediately above the
+    // signature.
+    const docLines: string[] = [];
+    for (let i = s.range.startLine - 2; i >= 0; i--) {
+      const t = (lines[i] ?? '').trim();
+      if (t === '' || (!t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*'))) break;
+      docLines.unshift(t);
+    }
+    if (docLines.length > 0) enclosingDoc = docLines.join('\n');
+  }
+  // Pull ±8 lines around the literal for surrounding context.
+  const winFrom = Math.max(0, line - 1 - 8);
+  const winTo = Math.min(lines.length, line - 1 + 8);
+  const window = lines
+    .slice(winFrom, winTo + 1)
+    .map((l, i) => `${winFrom + i + 1 === line ? '>' : ' '} ${winFrom + i + 1}: ${l}`)
+    .join('\n');
+  const parts: string[] = [];
+  if (enclosingSig) parts.push(`Enclosing function signature:\n\`${enclosingSig}\``);
+  if (enclosingDoc) parts.push(`Doc comment on the enclosing function:\n${enclosingDoc}`);
+  parts.push(`Code window (\`>\` marks the flagged line):\n\`\`\`\n${window}\n\`\`\``);
+  parts.push(
+    'Decide using the enclosing function + module name. If the literal is a domain constant local to this validator / encoder / parser (base58 lengths, IPv4 octets, ASCII boundary 127, retry-backoff thresholds, framework status codes) the answer is FALSE — naming each one inflates the binding count without clarifying anything. Flag REAL only when the literal is genuinely opaque business logic that a reader would have to guess about.',
+  );
+  return parts.join('\n\n');
+}
+
+/**
+ * Render up to 6 sibling exports from the same file as signature
+ * snippets so the LLM can answer "is this type-surface reachable
+ * through another exported symbol's signature?" — a question pure
+ * named-import counting can't answer.
+ */
+function buildDeadExportContext(
+  finding: Finding,
+  file: string,
+  symbolById: Map<string, SymbolRecord>,
+  workspaceRoot?: string,
+): string | undefined {
+  // Extract the export name from the title — detector emits
+  // `Unused export: <name> in <file>`.
+  const m = /Unused export:\s*(\S+)/i.exec(finding.title);
+  const targetName = m?.[1];
+  const siblings: string[] = [];
+  for (const s of symbolById.values()) {
+    if (s.file !== file) continue;
+    if (!s.exported) continue;
+    if (s.name === targetName) continue;
+    // First non-blank line of the source — usually the declaration
+    // signature for interfaces / functions / classes.
+    const firstLine = s.source.split('\n').find((ln) => ln.trim().length > 0) ?? '';
+    if (firstLine) siblings.push(`- ${s.kind} \`${s.name}\`: \`${firstLine.trim().slice(0, 160)}\``);
+    if (siblings.length >= 6) break;
+  }
+  const parts: string[] = [];
+  if (siblings.length > 0) {
+    parts.push(
+      `Other exports in the same file (\`${file}\`):\n${siblings.join('\n')}\n\nIf \`${targetName ?? 'this symbol'}\` appears in any of those signatures (return type, parameter, generic constraint, extends clause) it is reachable through the public type surface and a FALSE positive.`,
+    );
+  }
+  // Published-library mode: when the workspace ships as an npm package
+  // (has name + version, not private, declares main/module/exports/bin),
+  // every top-level export is potentially public API surface for
+  // downstream consumers. The detector cannot statically see those
+  // consumers — they live in other repos — so the LLM has to weigh
+  // "looks like part of a public utility set" against "genuinely dead
+  // internal helper". Tell it which workspace shape we're in.
+  if (workspaceRoot && isPublishedLibrary(workspaceRoot)) {
+    parts.push(
+      `Workspace shape: PUBLISHED npm LIBRARY (package.json has name + version, not private, declares an entry surface). Downstream consumers in OTHER repositories may import \`${targetName ?? 'this symbol'}\` even though no file inside THIS repo does. Lean toward FALSE positive when the symbol fits the library's domain (env-helper symmetry alongside other exports, types matching the package theme, utility functions named consistently with the published API) AND there is no obvious sign it is a stranded internal leftover (no \`@deprecated\` JSDoc, no \`unused-\` / \`legacy\` naming, no half-baked TODO).`,
+    );
+  }
+  if (parts.length === 0) return undefined;
+  return parts.join('\n\n');
 }
 
 /**
@@ -720,6 +1071,68 @@ function clusterLabel(finding: Finding): string | undefined {
   return undefined;
 }
 
+// Detectors with no dedicated cluster confirmer that still benefit
+// from a real-vs-false-positive LLM triage. Adding a detector here
+// routes its medium / high findings through `TriageConfirmer` in
+// processOne.
+const TRIAGE_DETECTORS = new Set<string>([
+  'silent-catch',
+  'public-any',
+  'mutable-globals',
+  'bad-config',
+  'long-function',
+  'long-file',
+  'magic-numbers',
+  'hot-hub-file',
+  'todo-comments',
+  // Reachability detectors: deterministic check misses framework
+  // conventions, dynamic loaders, structural type-surface — LLM with
+  // a sibling-signature / importer-count snippet handles those FPs
+  // far better than per-detector hand-coded rules.
+  'dead-export',
+  'dead-module',
+  'dead-handler',
+  'dead-api',
+  // Similar-functions has a high syntactic-only FP rate — two unrelated
+  // helpers can share an AST shape (template-literal builders, Commander
+  // command registrations) without being refactor candidates. Route
+  // medium-high findings through the triage confirmer so the LLM
+  // judges semantic relatedness, not just shape similarity.
+  'similar-functions',
+]);
+
+/**
+ * Subset of TRIAGE_DETECTORS that get an LLM verdict on EVERY finding,
+ * including low severity. These are detectors whose FP rate is high
+ * even at the low tier — reachability misses, design-intent flags,
+ * NOTE-vs-TODO discrimination — and the LLM cost is justified by the
+ * noise reduction.
+ *
+ * For all other TRIAGE detectors the gate stays at `severity !== 'low'`
+ * so we don't burn LLM calls on the deterministic-noise tier.
+ */
+const ALWAYS_TRIAGE_DETECTORS = new Set<string>([
+  'dead-export',
+  'dead-module',
+  'dead-handler',
+  'dead-api',
+  'todo-comments',
+  'hot-hub-file',
+  'long-file',
+  // long-function findings are emitted at 'low' severity but their
+  // FP rate is heavily project-shape dependent: linear handlers /
+  // composition-root components / state-machine bodies are legitimate
+  // at 80–120 LOC in some projects and sin in others. The project's
+  // own CLAUDE.md decides — and the only signal that surfaces that is
+  // the LLM with project conventions in scope.
+  'long-function',
+  // Magic-numbers deterministic pass already cuts ~70% of FPs. The
+  // remainder is domain-thresholds, byte-counts, ASCII boundaries —
+  // every one a judgement call that the LLM can answer with a snippet.
+  // Volume stays low because the per-file cap is 5.
+  'magic-numbers',
+]);
+
 /**
  * Decide whether a finding is borderline enough to warrant LLM confirmation.
  *
@@ -749,6 +1162,16 @@ function requiresLlmConfirmation(
   // cannot distinguish test fixtures / retry wrappers / idempotent
   // payloads / etag-locked writes from genuine HTTP races.
   if (finding.detectorId === 'api-race') return true;
+  // Detectors with no cluster confirmer but a high FP rate. Routed to
+  // the generic TriageConfirmer for a real/false verdict + reason.
+  // Two-tier gate: `ALWAYS_TRIAGE_DETECTORS` triages every finding
+  // (reachability + design-intent — high FP even at low tier);
+  // remaining TRIAGE detectors stay capped at medium+ so we don't
+  // burn LLM calls on deterministic noise.
+  if (TRIAGE_DETECTORS.has(finding.detectorId)) {
+    if (ALWAYS_TRIAGE_DETECTORS.has(finding.detectorId)) return true;
+    if (finding.severity !== 'low') return true;
+  }
   if (finding.detectorId !== 'duplicate-type' && finding.detectorId !== 'duplicate-function') return false;
   if (finding.layer >= 2) return true;
   if (finding.confidence < 0.95) return true;

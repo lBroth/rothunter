@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MlxLlmClient, createDefaultLlmClient } from '../adapters/mlx-llm.js';
+import { LlmClient, createDefaultLlmClient } from '../adapters/llm.js';
 import { parseLlmJsonResponse } from '../utils/llm-json.js';
 import { logger } from '../utils/logger.js';
 import type { SymbolRecord } from '../types.js';
@@ -54,7 +54,7 @@ B: interface RGB { r: number; g: number; b: number; }
 → {"same_concept": false, "confidence": 0.9, "reason": "Same {number×3} but vector vs color semantics"}
 
 Now decide for the real pair:
-
+{{PROJECT_CONVENTIONS}}
 Type A ({{FILE_A}}):
 \`\`\`typescript
 {{SOURCE_A}}
@@ -67,16 +67,24 @@ Type B ({{FILE_B}}):
 `;
 
 export class LlmConfirmer {
-  private llm: MlxLlmClient;
+  private llm: LlmClient;
   private cache = new Map<string, ConfirmationResult>();
 
-  constructor(llm?: MlxLlmClient) {
+  constructor(llm?: LlmClient) {
     this.llm = llm ?? createDefaultLlmClient();
   }
 
   async confirmSameConcept(
     a: SymbolRecord,
     b: SymbolRecord,
+    /**
+     * Project conventions text (CLAUDE.md / AGENTS.md / etc., already
+     * concatenated and truncated). When present, the verdict weighs
+     * project-stated rules — e.g. "three similar lines is better than
+     * premature abstraction" turns this into `same_concept: false` even
+     * on a tight skeleton match.
+     */
+    projectConventions?: string,
   ): Promise<ConfirmationResult | null> {
     const cacheKey = pairKey(a, b);
     const cached = this.cache.get(cacheKey);
@@ -98,10 +106,14 @@ export class LlmConfirmer {
       return null;
     }
 
+    const conventionsBlock = projectConventions
+      ? `\nProject conventions (treat as authoritative — override generic best-practice when in conflict):\n${projectConventions}\n`
+      : '';
     const prompt = PROMPT.replace('{{FILE_A}}', a.file)
       .replace('{{SOURCE_A}}', a.source)
       .replace('{{FILE_B}}', b.file)
-      .replace('{{SOURCE_B}}', b.source);
+      .replace('{{SOURCE_B}}', b.source)
+      .replace('{{PROJECT_CONVENTIONS}}', conventionsBlock);
 
     try {
       const raw = await this.llm.chat(

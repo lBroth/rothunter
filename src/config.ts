@@ -89,7 +89,7 @@ function parseConfig(configPath: string): RotHunterConfig {
   try {
     raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
   } catch (err) {
-    throw new Error(`${configPath}: invalid JSON — ${(err as Error).message}`);
+    throw new Error(`${configPath}: invalid JSON — ${(err as Error).message}`, { cause: err });
   }
   const parsed = RawConfigSchema.safeParse(raw);
   if (!parsed.success) {

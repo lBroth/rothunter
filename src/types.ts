@@ -100,6 +100,20 @@ export interface Finding {
    * "completed" item rather than silently dropping it.
    */
   resolvedAt?: number;
+  /**
+   * Auto-flagged by an LLM verdict as a false positive during this scan.
+   * Populated when the relevant confirmer (mutation, triage, …) returns
+   * `intentional` / `not real` with high confidence. Surface-level effect
+   * matches the manual FP store: the finding moves to the FP bucket
+   * instead of cluttering the open list. Differs from the persisted FP
+   * store in that it is scan-scoped and recomputed every run — if the
+   * code changes and the LLM no longer thinks it is intentional, the
+   * finding comes back automatically.
+   */
+  llmFalsePositive?: {
+    confidence: number;
+    reason: string;
+  };
 }
 
 export interface Detector {
