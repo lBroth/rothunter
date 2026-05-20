@@ -18,24 +18,30 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    # `setup-node` writes an `.npmrc` that interpolates
-    # `${NODE_AUTH_TOKEN}` for every authenticated request. Set the
-    # env at JOB level so `npm ci` + `npm test` + `npm publish` all
-    # see it — without it `npm ci` 401s on the first private-tarball
-    # resolution attempt setup-node makes during install.
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      # First setup-node — install / test against the PUBLIC registry
+      # WITHOUT an authenticated `.npmrc`. setup-node's `registry-url`
+      # writes `//registry/:_authToken=${NODE_AUTH_TOKEN}`, and any
+      # malformed token value 401s npm CI even on public-package
+      # fetches; keep auth out of the install path entirely.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --ci
+      - run: npm run build
+      # Re-run setup-node JUST to (re)write `.npmrc` with the publish
+      # registry + token. Scoped to the publish step's needs only.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: npm
-      - run: npm ci
-      - run: npm test -- --ci
       - name: Publish to npm
         run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   docker-publish:
     runs-on: ubuntu-latest
