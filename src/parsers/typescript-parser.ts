@@ -20,7 +20,7 @@ import {
   type VariableDeclaration,
 } from 'ts-morph';
 import { logger } from '../utils/logger.js';
-import { loadGitignore } from '../utils/gitignore.js';
+import { loadGitignore, enumerateSourceFiles } from '../utils/gitignore.js';
 import { resolveImport, type ImportRecord } from '../graph/import-graph.js';
 import { loadTsconfigPaths } from '../graph/tsconfig-paths.js';
 import type { FieldStructure, FunctionStructure, SymbolRecord, TypeStructure } from '../types.js';
@@ -60,43 +60,6 @@ export class TypeScriptParser {
       skipFileDependencyResolution: true,
     });
 
-    if (!opts.tsConfigFilePath) {
-      if (opts.files && opts.files.length > 0) {
-        const absolute = opts.files.map((f) =>
-          path.isAbsolute(f) ? f : path.join(opts.workspaceRoot, f),
-        );
-        project.addSourceFilesAtPaths(absolute);
-      } else {
-        // Pre-filter at glob time — ts-morph `addSourceFilesAtPaths`
-        // loads every match into memory BEFORE the gitignore filter
-        // below runs. On a workspace with a populated `node_modules/`
-        // (mounted from a host repo, very common with `docker run -v
-        // $(pwd):/workspace`) the parser used to OOM after loading
-        // 60 k+ .ts files. Negative-glob exclusion keeps the always-
-        // ignored dirs out of the load entirely; the .gitignore-based
-        // filter below still trims anything else the operator marked.
-        const includes = opts.filePatterns ?? ['**/*.ts', '**/*.tsx'];
-        const excludes = [
-          '!**/node_modules/**',
-          '!**/dist/**',
-          '!**/build/**',
-          '!**/.next/**',
-          '!**/.nuxt/**',
-          '!**/.svelte-kit/**',
-          '!**/.turbo/**',
-          '!**/.cache/**',
-          '!**/.parcel-cache/**',
-          '!**/.vite/**',
-          '!**/coverage/**',
-          '!**/.git/**',
-        ];
-        const patterns = [...includes, ...excludes];
-        project.addSourceFilesAtPaths(patterns.map((p) => p.startsWith('!')
-          ? `!${path.join(opts.workspaceRoot, p.slice(1))}`
-          : path.join(opts.workspaceRoot, p)));
-      }
-    }
-
     // File exclusions come exclusively from `.gitignore` + the
     // workspace's `.rothunterignore` (gitignore-syntax extension).
     // The matcher bakes in `node_modules` + `.git` so we keep sane
@@ -104,6 +67,34 @@ export class TypeScriptParser {
     // tunes everything else through their own `.gitignore` —
     // rothunter never carries a parallel skip list that drifts.
     const gitignore = loadGitignore(opts.workspaceRoot);
+
+    if (!opts.tsConfigFilePath) {
+      if (opts.files && opts.files.length > 0) {
+        const absolute = opts.files.map((f) =>
+          path.isAbsolute(f) ? f : path.join(opts.workspaceRoot, f),
+        );
+        project.addSourceFilesAtPaths(absolute);
+      } else {
+        // Pre-load enumeration: walk the workspace ONCE, respecting
+        // every .gitignore + .rothunterignore rule (incl. nested ones),
+        // and only hand ts-morph the exact files we want it to parse.
+        // Skipping ts-morph's own glob keeps `node_modules/`, `dist/`,
+        // and every other operator-ignored tree out of memory — a real
+        // monorepo would otherwise blow the V8 heap loading 60 k+ files
+        // before any filter ran.
+        const exts =
+          opts.filePatterns?.flatMap((p) => {
+            const m = /\*\.(\w+)$/.exec(p);
+            return m ? [`.${m[1]}`] : [];
+          }) ?? ['.ts', '.tsx'];
+        const enumerated = enumerateSourceFiles(opts.workspaceRoot, gitignore, exts);
+        if (enumerated.length > 0) {
+          project.addSourceFilesAtPaths(
+            enumerated.map((rel) => path.join(opts.workspaceRoot, rel)),
+          );
+        }
+      }
+    }
 
     // Load tsconfig path aliases once per workspace — used by resolveImport
     // for bare specifiers like `@/foo`, `~/bar`, `@app/lib`.

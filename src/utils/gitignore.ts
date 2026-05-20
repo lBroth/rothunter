@@ -118,3 +118,50 @@ export function loadGitignore(workspaceRoot: string): Ignore {
 export function filterGitignored(matcher: Ignore, files: ReadonlyArray<string>): string[] {
   return files.filter((f) => !matcher.ignores(f.replace(/\\/g, '/')));
 }
+
+/**
+ * Walk the workspace and return every workspace-relative file whose
+ * extension matches one of `extensions` AND whose path is not ignored
+ * by the gitignore matcher. Used as a pre-load pass before ts-morph
+ * `addSourceFilesAtPaths` — ts-morph's own glob match would load
+ * every file before any filter runs, OOM'ing on a host repo that
+ * carries a populated `node_modules/`.
+ *
+ * `extensions` MUST start with a dot (`.ts`, `.tsx`, …).
+ *
+ * The walk skips ignored directories without descending into them
+ * (~10x less syscalls vs. walk-and-filter on a 50 k file monorepo).
+ */
+export function enumerateSourceFiles(
+  workspaceRoot: string,
+  matcher: Ignore,
+  extensions: ReadonlyArray<string>,
+): string[] {
+  const out: string[] = [];
+  const exts = new Set(extensions);
+  const walk = (dir: string, relPrefix: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const childRel = relPrefix === '' ? entry.name : `${relPrefix}/${entry.name}`;
+      if (entry.isDirectory()) {
+        // Ask the matcher with the trailing slash so `dist/` style
+        // dir-only patterns hit; bail before descending.
+        if (matcher.ignores(`${childRel}/`)) continue;
+        walk(path.join(dir, entry.name), childRel);
+        continue;
+      }
+      if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+      const ext = path.extname(entry.name);
+      if (!exts.has(ext)) continue;
+      if (matcher.ignores(childRel)) continue;
+      out.push(childRel);
+    }
+  };
+  walk(workspaceRoot, '');
+  return out;
+}
