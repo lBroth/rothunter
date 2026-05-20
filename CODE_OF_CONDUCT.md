@@ -38,10 +38,13 @@ Examples of unacceptable behaviour:
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behaviour
-may be reported to the maintainers via a private GitHub security
-advisory. All complaints will be reviewed and investigated promptly and
-fairly. Maintainers are obligated to respect the privacy and security
-of the reporter.
+may be reported to the maintainers privately by emailing the address
+listed at the top of the repository's GitHub profile, or by opening a
+private issue via your contact of choice. Do **not** use the GitHub
+security advisory channel (that channel is reserved for software
+vulnerabilities). All complaints will be reviewed and investigated
+promptly and fairly. Maintainers are obligated to respect the privacy
+and security of the reporter.
 
 ## Attribution
 

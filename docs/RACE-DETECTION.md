@@ -11,8 +11,9 @@ race spans repository / service / database boundaries:
 | 3 | Async fan-out where the same endpoint is hit by sibling services | `api-race` | HIGH |
 
 The walkthrough below uses a 7-package monorepo (`packages/*`) wired
-together by HTTP fetches. Run it locally with `npm run scan` against
-the demo root — the dashboard surfaces every finding below.
+together by HTTP fetches. Boot the engine with `npm run dev:full`,
+point the dashboard at the monorepo root, and trigger a scan — every
+finding below shows up in the open list.
 
 ---
 
@@ -81,7 +82,7 @@ single-flight guard. Order of arrival decides the persisted tier.
 
 ```
 api-race · HIGH
-Shared API write: `PATCH /api/users/:param/tier` called from 2 files
+Shared API write: `PATCH /api/users/:param/tier` called from 2 files (2 call sites, clients: fetch)
 files: [admin-service/src/index.ts, promo-service/src/index.ts]
 ```
 
@@ -121,7 +122,7 @@ asynchronously, and `api-race` catches that:
 
 ```
 api-race · HIGH
-Shared API write: `PUT /api/inventory/:param` called from 2 files
+Shared API write: `PUT /api/inventory/:param` called from 2 files (2 call sites, clients: fetch)
 files: [notifier-service/src/index.ts, orderer-service/src/index.ts]
 ```
 

@@ -23,6 +23,8 @@
 
 **Cross-service race detection** — `shared-db-write` and `api-race` run cross-workspace in monorepo mode, catching DB-column writes and write-endpoint calls that span service / repository boundaries. See [`docs/RACE-DETECTION.md`](./docs/RACE-DETECTION.md) for a walkthrough with three concrete scenarios.
 
+Full detector list with severities + tunables: [`docs/DETECTORS.md`](./docs/DETECTORS.md).
+
 ### Coverage by mode
 
 | Mode | Detectors |

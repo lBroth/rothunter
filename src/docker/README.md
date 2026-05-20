@@ -18,7 +18,7 @@ Open <http://localhost:3000>.
 | Service        | Image                                          | Purpose                                 |
 |----------------|------------------------------------------------|-----------------------------------------|
 | `rothunter`     | local build (Dockerfile)                       | Fastify API + React UI                  |
-| `rothunter-llm` | `ghcr.io/ggerganov/llama.cpp:server-cuda`      | Qwen2.5-Coder-14B Q4_K_M LLM verdict |
+| `rothunter-llm` | `ghcr.io/ggml-org/llama.cpp:server`            | Qwen2.5-Coder-14B Q4_K_M LLM verdict |
 
 ## Volumes
 
@@ -42,12 +42,13 @@ RotHunter writes to `<workspace>/.rothunter/`:
 Both persist across container restarts because the workspace is mounted
 read-write into the container.
 
-## CPU-only fallback
+## GPU opt-in
 
-Edit `docker-compose.yml`: switch the `rothunter-llm` image to
-`ghcr.io/ggerganov/llama.cpp:server` and remove the `deploy.resources`
-GPU reservation. Inference will be slower (~5-15 s per LLM verdict
-vs ~1.5 s on GPU).
+The default `rothunter-llm` image is the CPU-only `ghcr.io/ggml-org/llama.cpp:server`.
+For CUDA, edit `docker-compose.yml`: switch the image to
+`ghcr.io/ggml-org/llama.cpp:server-cuda` and uncomment the
+`deploy.resources.reservations.devices` block. Inference drops from
+~5–15 s per verdict (CPU) to ~1–2 s (GPU).
 
 ## Dev mode (no Docker)
 

@@ -8,7 +8,7 @@ Do **not** open a public issue for security problems.
 
 Please include:
 
-- The version (`rothunter --version` or `package.json`).
+- The version (from `package.json` — there is no CLI binary yet).
 - Steps to reproduce.
 - Impact: data exposure, RCE, denial of service, …
 - Optional: suggested fix.
@@ -59,7 +59,7 @@ trusted developer VM) and points it at code they own.
 
 - The engine itself depends on `fastify`, `ts-morph`, `zod`, `pino`,
   `ignore`. Patch updates land through Dependabot weekly.
-- The dashboard depends on React 19, Vite 8, Tailwind 4, Lucide.
+- The dashboard depends on React 19, Vite 8, Tailwind 3, Lucide.
 
 ### Out of scope
 
