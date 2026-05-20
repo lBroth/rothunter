@@ -57,10 +57,13 @@ export function TopBar({
         type="button"
         disabled={pending}
         onClick={() => void onRunScan()}
+        aria-busy={pending}
         className={
-          'px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 transition-colors shrink-0 ' +
+          'px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-2 shrink-0 transition-all ' +
           (pending
-            ? 'bg-accent/10 border border-accent/30 text-accent/60 cursor-wait'
+            ? // Pending: full-opacity accent ring + spinner + label
+              // always visible (even on phones) so the tap is unmistakable.
+              'bg-accent/30 border border-accent text-accent cursor-wait animate-pulse'
             : 'bg-accent text-panel hover:bg-accent/90')
         }
       >
@@ -69,7 +72,11 @@ export function TopBar({
         ) : (
           <Play size={14} fill="currentColor" />
         )}
-        <span className="hidden sm:inline">{pending ? 'Starting…' : 'Run scan'}</span>
+        {/* Label always visible while pending so the operator never
+            second-guesses whether the tap registered on small screens. */}
+        <span className={pending ? 'inline' : 'hidden sm:inline'}>
+          {pending ? 'Starting…' : 'Run scan'}
+        </span>
       </button>
     </header>
   );

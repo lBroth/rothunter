@@ -85,8 +85,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
         <header className="px-5 py-3 border-b border-border-soft flex items-baseline gap-3 flex-wrap">
           <span className="text-sm font-semibold text-ink">HIGH findings · trend</span>
           <span className="text-xs text-muted font-mono">
-            last {entries.length} scan{entries.length === 1 ? '' : 's'} · area is
-            open-but-not-yet-fixed
+            last {entries.length} scan{entries.length === 1 ? '' : 's'} · area = open findings
           </span>
           <button
             type="button"
@@ -136,7 +135,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
         <header className="px-5 py-3 border-b border-border-soft flex items-baseline gap-3">
           <span className="text-sm font-semibold text-ink">Recent scans</span>
           <span className="text-xs text-muted font-mono">
-            {Math.min(entries.length, 10)} shown · click a row to compare
+            {Math.min(entries.length, 10)} shown · click a row to open
           </span>
         </header>
         {entries.length === 0 ? (
@@ -152,7 +151,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                   <button
                     type="button"
                     onClick={() =>
-                      onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()
+                      onOpenScan?.(e.scanId)
                     }
                     className="flex-1 text-left hover:bg-bg flex flex-col gap-1 text-xs font-mono"
                   >
@@ -221,7 +220,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                     <td
                       className="pl-5 py-2.5 font-mono text-xs text-ink cursor-pointer"
                       onClick={() =>
-                        onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()
+                        onOpenScan?.(e.scanId)
                       }
                     >
                       <span className="flex items-center gap-2">
@@ -238,7 +237,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                     <td
                       className="py-2.5 font-mono text-xs text-muted cursor-pointer"
                       onClick={() =>
-                        onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()
+                        onOpenScan?.(e.scanId)
                       }
                     >
                       {relative(e.startedAt)}
@@ -246,7 +245,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                     <td
                       className="py-2.5 font-mono text-xs text-muted cursor-pointer"
                       onClick={() =>
-                        onOpenScan?.(e.scanId) ?? TODO(`compare scan #${e.scanId.slice(0, 8)}`)()
+                        onOpenScan?.(e.scanId)
                       }
                     >
                       {e.durationMs ? formatDuration(Math.round(e.durationMs / 1000)) : '—'}

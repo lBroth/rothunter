@@ -5,13 +5,25 @@ interface KpiCellProps {
   delta?: number;
   tone?: 'ink' | 'high' | 'med' | 'low' | 'accent';
   suffix?: string;
+  /** When set, the cell renders as a clickable button — used by the
+      dashboard to drill into the matching filtered findings list. */
+  onClick?: () => void;
 }
 
 /**
  * Single counter cell: tiny tracking-wide caps label, big mono value,
- * optional delta arrow + magnitude beside.
+ * optional delta arrow + magnitude beside. Rendered as a `<button>`
+ * when `onClick` is set (so the whole cell becomes a hover-styled
+ * tap target — drills into Findings filtered by the cell's metric).
  */
-export function KpiCell({ label, value, delta, tone = 'ink', suffix }: KpiCellProps): JSX.Element {
+export function KpiCell({
+  label,
+  value,
+  delta,
+  tone = 'ink',
+  suffix,
+  onClick,
+}: KpiCellProps): JSX.Element {
   const toneClass = {
     ink: 'text-ink',
     high: 'text-high',
@@ -19,8 +31,12 @@ export function KpiCell({ label, value, delta, tone = 'ink', suffix }: KpiCellPr
     low: 'text-low',
     accent: 'text-accent',
   }[tone];
-  return (
-    <div className="px-4 sm:px-5 py-3 sm:py-4">
+  const interactive = onClick != null;
+  const cls =
+    'px-4 sm:px-5 py-3 sm:py-4 text-left w-full ' +
+    (interactive ? 'transition-colors hover:bg-bg cursor-pointer focus:outline-none focus:bg-bg' : '');
+  const body = (
+    <>
       <div className="text-[9px] sm:text-[10px] uppercase tracking-widest text-muted font-mono mb-1.5 sm:mb-2">
         {label}
       </div>
@@ -43,7 +59,14 @@ export function KpiCell({ label, value, delta, tone = 'ink', suffix }: KpiCellPr
         )}
         {delta === 0 && <span className="text-[11px] font-mono text-muted">— 0</span>}
       </div>
-    </div>
+    </>
+  );
+  return interactive ? (
+    <button type="button" onClick={onClick} className={cls}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 

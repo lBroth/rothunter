@@ -25,7 +25,6 @@ export const CLUSTERED_DETECTORS: ReadonlySet<string> = new Set<string>([
   'shared-db-write',
   'race-condition',
   'mutation',
-  'same-name-evolution',
   'similar-functions',
 ]);
 

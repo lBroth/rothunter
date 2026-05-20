@@ -21,6 +21,13 @@ export interface Finding {
   fingerprint: string;
   /** Unix-ms timestamp when this finding was confirmed resolved via single-finding rerun. */
   resolvedAt?: number;
+  /**
+   * Auto-FP verdict from the LLM confirmer for this scan. Differs from
+   * the manual FP store: scan-scoped (re-evaluated every run) and the
+   * UI badges these rows so the user can tell "rothunter says intentional"
+   * apart from "I told rothunter this is intentional".
+   */
+  llmFalsePositive?: { confidence: number; reason: string };
 }
 
 export interface ScanRecord {
@@ -31,7 +38,6 @@ export interface ScanRecord {
     | 'detecting'
     | 'llm-start'
     | 'llm-verdict'
-    | 'snooze'
     | 'done'
     | 'error';
   startedAt: number;
@@ -51,7 +57,6 @@ export interface ScanSseEvent {
     | 'detecting'
     | 'llm-start'
     | 'llm-verdict'
-    | 'snooze'
     | 'done'
     | 'error';
   files?: number;
@@ -168,6 +173,56 @@ export async function rerunFindingVerdict(fingerprint: string): Promise<RerunRes
   }
   if (!res.ok) throw new Error(`/api/findings/${fingerprint}/rerun → ${res.status}`);
   return (await res.json()) as RerunResult;
+}
+
+export async function markToFix(fingerprint: string): Promise<{ count: number }> {
+  const res = await fetch(`/api/findings/${encodeURIComponent(fingerprint)}/mark-to-fix`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`/api/findings/${fingerprint}/mark-to-fix → ${res.status}`);
+  return (await res.json()) as { count: number };
+}
+
+export async function unmarkToFix(fingerprint: string): Promise<{ count: number }> {
+  const res = await fetch(`/api/findings/${encodeURIComponent(fingerprint)}/mark-to-fix`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`/api/findings/${fingerprint}/mark-to-fix → ${res.status}`);
+  return (await res.json()) as { count: number };
+}
+
+/**
+ * Batch add / remove for the marked-to-fix queue. Single round-trip,
+ * single read-modify-write on the server — used by the Findings page
+ * bulk-select bar. N parallel single-fingerprint POSTs caused a
+ * write-stomp race that dropped most marks; this is the safe path.
+ */
+export async function batchMarkedToFix(args: {
+  add?: string[];
+  remove?: string[];
+}): Promise<{ count: number }> {
+  const res = await fetch('/api/marked-to-fix/batch', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  if (!res.ok) throw new Error(`/api/marked-to-fix/batch → ${res.status}`);
+  return (await res.json()) as { count: number };
+}
+
+export async function listMarkedToFix(): Promise<{ fingerprints: string[]; findings: Finding[] }> {
+  const res = await fetch('/api/marked-to-fix');
+  if (!res.ok) throw new Error(`/api/marked-to-fix → ${res.status}`);
+  return (await res.json()) as { fingerprints: string[]; findings: Finding[] };
+}
+
+export async function generateCombinedFixPrompt(): Promise<{ prompt: string; findingCount: number }> {
+  const res = await fetch('/api/marked-to-fix/prompt', { method: 'POST' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return (await res.json()) as { prompt: string; findingCount: number };
 }
 
 export async function getScanLlmStats(scanId: string): Promise<{ scanId: string; state: string; stats: LlmStats }> {
@@ -302,6 +357,8 @@ export interface AppSettings {
   detectors: Record<string, boolean>;
   minConfidence: number;
   llmConcurrency: number;
+  /** Confidence floor at which a negative LLM verdict auto-routes a finding to the FP bucket. */
+  llmAutoFpThreshold: number;
   hardware?: { cpuCores: number; totalMemMb: number };
   llm: { baseUrl: string; model: string };
   allDetectors: string[];
@@ -318,6 +375,7 @@ export async function updateSettings(patch: {
   detectors?: Record<string, boolean>;
   minConfidence?: number;
   llmConcurrency?: number;
+  llmAutoFpThreshold?: number;
 }): Promise<AppSettings> {
   const res = await fetch('/api/settings', {
     method: 'POST',
@@ -392,6 +450,24 @@ export async function unmarkFalsePositive(fingerprint: string): Promise<number> 
   if (!res.ok) throw new Error(`unmark FP → ${res.status}`);
   const d = (await res.json()) as { count: number };
   return d.count;
+}
+
+/**
+ * Batch mark / unmark as false-positive. Mirrors `batchMarkedToFix`
+ * — single round-trip, single read-modify-write on the server so
+ * parallel single-fingerprint calls cannot stomp each other.
+ */
+export async function batchFalsePositives(args: {
+  add?: string[];
+  remove?: string[];
+}): Promise<{ count: number }> {
+  const res = await fetch('/api/false-positives/batch', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  if (!res.ok) throw new Error(`/api/false-positives/batch → ${res.status}`);
+  return (await res.json()) as { count: number };
 }
 
 export async function getCodeWindow(

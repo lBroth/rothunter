@@ -13,6 +13,7 @@ import { LiveScanBanner } from './components/LiveScanBanner.js';
 import { Toaster } from './components/Toaster.js';
 import { listScans, startScan } from './lib/api.js';
 import { useHistoryRoute } from './lib/history.js';
+import { toast } from './lib/toast.js';
 
 export function App(): JSX.Element {
   const { route, setRoute } = useHistoryRoute();
@@ -39,11 +40,19 @@ export function App(): JSX.Element {
   }, []);
 
   const onStartScan = async (): Promise<void> => {
+    if (pendingScan) return; // guard against double-tap on mobile
     setPendingScan(true);
+    // Immediate user feedback — the button label swaps to "Starting…"
+    // synchronously but the toast is the unambiguous "tap registered"
+    // signal, especially on small screens where the label is hidden
+    // and only the icon shows.
+    toast('Starting scan…', 'info');
     try {
       const { scanId } = await startScan({});
       setLiveScanId(scanId);
       setRoute({ name: 'running', scanId });
+    } catch (e) {
+      toast(`Scan failed to start: ${(e as Error).message}`, 'warn');
     } finally {
       setPendingScan(false);
     }
@@ -76,12 +85,14 @@ export function App(): JSX.Element {
             <Dashboard
               scanId={latestScanId}
               onOpenFinding={(fp) => setRoute({ name: 'finding', fingerprint: fp })}
-              onScanStarted={(sid) => setRoute({ name: 'running', scanId: sid })}
               onOpenFindings={(filter) =>
                 setRoute({
                   name: 'findings',
                   detector: filter?.detector,
                   directory: filter?.directory,
+                  severity: filter?.severity,
+                  view: filter?.view,
+                  layer: filter?.layer,
                 })
               }
             />
@@ -108,6 +119,9 @@ export function App(): JSX.Element {
               scanId={route.scanId ?? latestScanId}
               initialDetector={route.detector}
               initialDirectory={route.directory}
+              initialSeverity={route.severity}
+              initialView={route.view}
+              initialLayer={route.layer}
               onOpenFinding={(fp) => setRoute({ name: 'finding', fingerprint: fp })}
             />
           )}

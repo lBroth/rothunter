@@ -86,6 +86,7 @@ export function Settings(): JSX.Element {
     detectors?: Record<string, boolean>;
     minConfidence?: number;
     llmConcurrency?: number;
+    llmAutoFpThreshold?: number;
   }): Promise<void> => {
     if (!settings) return;
     setSaving(true);
@@ -127,6 +128,16 @@ export function Settings(): JSX.Element {
   const commitLlmConcurrency = (): void => {
     if (!settings) return;
     void save({ llmConcurrency: settings.llmConcurrency });
+  };
+
+  const setLlmAutoFpThreshold = (v: number): void => {
+    if (!settings) return;
+    setSettings({ ...settings, llmAutoFpThreshold: v });
+  };
+
+  const commitLlmAutoFpThreshold = (): void => {
+    if (!settings) return;
+    void save({ llmAutoFpThreshold: settings.llmAutoFpThreshold });
   };
 
   if (err && !settings) return <div className="text-high">error: {err}</div>;
@@ -217,6 +228,7 @@ export function Settings(): JSX.Element {
           </div>
         )}
 
+
         {settings?.comingSoon && settings.comingSoon.length > 0 && (
           <div className="border-t border-border-soft">
             <header className="px-5 py-2.5 flex items-baseline gap-2 bg-bg/40">
@@ -248,7 +260,15 @@ export function Settings(): JSX.Element {
         <header className="px-5 py-3 border-b border-border-soft flex items-baseline gap-3 flex-wrap">
           <Cpu size={14} className="text-accent self-center" />
           <span className="text-sm font-semibold text-ink">LLM</span>
-          <span className="text-xs text-muted font-mono">local llama.cpp sidecar</span>
+          <span className="text-xs text-muted font-mono">
+            {(() => {
+              const url = settings?.llm.baseUrl ?? '';
+              if (/^https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(url)) {
+                return 'local backend (auto-detected: llama.cpp · docker)';
+              }
+              return url ? 'remote endpoint' : 'not configured';
+            })()}
+          </span>
           {settings?.hardware && (
             <span className="text-[10px] text-muted font-mono">
               · host {settings.hardware.cpuCores}c /{' '}
@@ -331,10 +351,39 @@ export function Settings(): JSX.Element {
               pick the same N here.
               <br />· <span className="text-ink">vLLM (CUDA)</span> — dynamic batching is on by
               default, 4–16 is safe.
-              <br />· <span className="text-ink">mlx_lm.server</span> — serialises internally; keep
-              at 1.
               <br />
               Auto-tuned to half the CPU cores on first boot.
+            </div>
+          </div>
+        )}
+        {settings && (
+          <div className="px-5 py-4 border-t border-border-soft">
+            <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+              <label className="text-xs font-mono text-ink" htmlFor="llmfp">
+                LLM auto-FP threshold
+              </label>
+              <span className="text-xs font-mono text-accent tabular-nums">
+                {settings.llmAutoFpThreshold.toFixed(2)}
+              </span>
+            </div>
+            <input
+              id="llmfp"
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={settings.llmAutoFpThreshold}
+              onChange={(e) => setLlmAutoFpThreshold(parseFloat(e.target.value))}
+              onMouseUp={commitLlmAutoFpThreshold}
+              onTouchEnd={commitLlmAutoFpThreshold}
+              className="w-full accent-accent"
+            />
+            <div className="flex justify-between text-[10px] text-muted font-mono mt-1">
+              <span>0.00 · auto-FP every LLM verdict</span>
+              <span>1.00 · disable auto-FP</span>
+            </div>
+            <div className="mt-3 rounded border border-border-soft bg-bg px-3 py-2 text-[11px] text-muted font-mono leading-relaxed">
+              Confidence floor at which a negative LLM verdict routes a finding to the auto-FP bucket. Lower values (≈ 0.5) are aggressive — almost every "intentional / FP" LLM call auto-routes. Higher values (≈ 0.9) are strict — only very-confident verdicts move out of the open list.
             </div>
           </div>
         )}

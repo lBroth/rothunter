@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { Check, Circle, Loader2, X } from 'lucide-react';
 import type { ScanSseEvent } from '../lib/api.js';
-import { cancelScan, subscribeScan } from '../lib/api.js';
+import { cancelScan, getScan, subscribeScan } from '../lib/api.js';
 import { SectionHeader } from '../components/SectionHeader.js';
 
 interface ScanRunningProps {
@@ -20,12 +20,18 @@ interface VerdictEntry {
   latencyMs: number;
 }
 
+// Display order for the pipeline view. `symbol-graph` is a synthetic
+// stage (the parsing pass that builds the symbol table); every other
+// id mirrors a real detector. Kept in sync with the engine's
+// detector-registry — when a new detector lands the entry needs to be
+// added here AND in DETECTOR_BLURB below.
 const DETECTOR_ORDER = [
   'symbol-graph',
   'duplicate-type',
   'duplicate-function',
   'dead-module',
   'dead-export',
+  'dead-api',
   'dead-handler',
   'mutation',
   'race-condition',
@@ -53,6 +59,7 @@ const DETECTOR_BLURB: Record<string, string> = {
   'duplicate-function': 'function-body hashing',
   'dead-module': 'module reachability',
   'dead-export': 'export reachability',
+  'dead-api': 'cross-repo export reachability',
   'dead-handler': 'IaC entry resolution',
   mutation: 'shared-state mutation surfaces',
   'race-condition': 'read-modify-write across await',
@@ -84,8 +91,36 @@ export function ScanRunning({ scanId, onDone }: ScanRunningProps): JSX.Element {
   const [doneDetectors, setDoneDetectors] = useState<Set<string>>(new Set());
   const [verdicts, setVerdicts] = useState<VerdictEntry[]>([]);
   const [sseStatus, setSseStatus] = useState<'open' | 'reconnecting' | 'closed'>('open');
-  const startedAt = useRef<number>(Date.now());
+  // `startedAt` is the SCAN start time, not the page-mount time. A
+  // reload during a running scan used to reset the elapsed clock to 0
+  // because the previous implementation captured `Date.now()` on mount.
+  // We now seed from the server's persisted ScanRecord on first paint
+  // so the timer survives reloads, navigation, and tab restores.
+  const startedAt = useRef<number | null>(null);
   const [, setTick] = useState<number>(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    getScan(scanId)
+      .then((scan) => {
+        if (cancelled) return;
+        if (typeof scan.startedAt === 'number') {
+          startedAt.current = scan.startedAt;
+        } else {
+          startedAt.current = Date.now();
+        }
+        setTick((t) => t + 1);
+      })
+      .catch(() => {
+        // Scan record not (yet) on disk — fall back to mount time.
+        // SSE will keep ticking; the elapsed value will undercount by
+        // at most a second or two against the real scan start.
+        if (!cancelled) startedAt.current = Date.now();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scanId]);
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 500);
@@ -100,13 +135,24 @@ export function ScanRunning({ scanId, onDone }: ScanRunningProps): JSX.Element {
         if (event.files != null) setFiles(event.files);
         if (event.symbols != null) setSymbols(event.symbols);
         if (event.detector) {
-          setDoneDetectors((prev) => {
-            if (!activeDetector || prev.has(activeDetector)) return prev;
-            const next = new Set(prev);
-            next.add(activeDetector);
-            return next;
+          // Promote the previously-active detector to done in lockstep
+          // with switching `activeDetector` over. Reading the previous
+          // value through the setState updater keeps this independent
+          // of the surrounding closure — `activeDetector` is no longer
+          // a useEffect dep, so the SSE subscription stays put for the
+          // lifetime of the scan instead of churning on every detector
+          // event (which silently dropped intermediate progress).
+          setActiveDetector((prev) => {
+            if (prev && prev !== event.detector) {
+              setDoneDetectors((doneSet) => {
+                if (doneSet.has(prev)) return doneSet;
+                const next = new Set(doneSet);
+                next.add(prev);
+                return next;
+              });
+            }
+            return event.detector ?? prev;
           });
-          setActiveDetector(event.detector);
         }
         if (event.state === 'llm-verdict' && event.verdict) {
           setLlmDone(event.llmDone ?? 0);
@@ -128,6 +174,20 @@ export function ScanRunning({ scanId, onDone }: ScanRunningProps): JSX.Element {
         }
         if (event.state === 'llm-start') {
           setLlmTotal(event.llmTotal ?? 0);
+          // Entering the LLM pass means every detector finished — flush
+          // the last active one into the done set so the pipeline view
+          // doesn't leave the final detector frozen in ACTIVE.
+          setActiveDetector((prev) => {
+            if (prev) {
+              setDoneDetectors((doneSet) => {
+                if (doneSet.has(prev)) return doneSet;
+                const next = new Set(doneSet);
+                next.add(prev);
+                return next;
+              });
+            }
+            return null;
+          });
         }
         if (event.state === 'done' || event.state === 'error') {
           setTimeout(onDone, 1200);
@@ -136,9 +196,9 @@ export function ScanRunning({ scanId, onDone }: ScanRunningProps): JSX.Element {
       setSseStatus,
     );
     return () => unsub();
-  }, [scanId, onDone, activeDetector]);
+  }, [scanId, onDone]);
 
-  const elapsedMs = Date.now() - startedAt.current;
+  const elapsedMs = startedAt.current != null ? Date.now() - startedAt.current : 0;
   const elapsed = Math.floor(elapsedMs / 1000);
   const llmPct = llmTotal > 0 ? (llmDone / llmTotal) * 100 : 0;
   const parsedPct = files != null ? 100 : latest?.state === 'parsing' ? 30 : 0;
@@ -175,9 +235,6 @@ export function ScanRunning({ scanId, onDone }: ScanRunningProps): JSX.Element {
             <div className="space-y-1">
               <div>
                 scan <span className="text-ink">#{scanId.slice(0, 12)}</span>
-              </div>
-              <div>
-                commit <span className="text-ink">—</span>
               </div>
               {sseStatus === 'reconnecting' && (
                 <div className="text-med inline-flex items-center gap-1.5">
@@ -429,7 +486,7 @@ function VerdictStreamCard({ verdicts }: { verdicts: VerdictEntry[] }): JSX.Elem
                   }
                 >
                   <span className="w-1 h-1 rounded-full bg-current" />
-                  {v.race ? 'RACE' : 'SAFE'}
+                  {v.race ? 'REAL' : 'FP'}
                 </span>
               </td>
               <td className="py-2 pr-5">
@@ -472,6 +529,5 @@ function renderStateLabel(state: ScanSseEvent['state'] | undefined): string {
   if (state === 'parsing') return 'parsing';
   if (state === 'done') return 'done';
   if (state === 'error') return 'error';
-  if (state === 'snooze') return 'snoozing';
   return state;
 }

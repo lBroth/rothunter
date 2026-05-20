@@ -1,19 +1,33 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { JSX } from 'react';
-import { Play } from 'lucide-react';
+import { Loader2, Sparkles, X } from 'lucide-react';
 import type { Finding, ScanDiff, ScanRecord } from '../lib/api.js';
-import { getScan, getScanDiff, startScan } from '../lib/api.js';
+import { generateCombinedFixPrompt, getScan, getScanDiff, listMarkedToFix } from '../lib/api.js';
 import { SectionHeader } from '../components/SectionHeader.js';
 import { KpiCell, KpiStrip } from '../components/KpiStrip.js';
 import { ClusterPill, SeverityChip } from '../components/Chips.js';
 import { PageSkeleton, RefreshDot } from '../components/Skeleton.js';
-import { getWorkspace } from '../lib/api.js';
+import { toast } from '../lib/toast.js';
+import { copyText } from '../lib/clipboard.js';
 
 interface DashboardProps {
   scanId: string | null;
   onOpenFinding: (fingerprint: string) => void;
-  onScanStarted: (scanId: string) => void;
-  onOpenFindings?: (filter?: { detector?: string; directory?: string }) => void;
+  onOpenFindings?: (filter?: FindingsFilter) => void;
+}
+
+/**
+ * Filter payload the Dashboard can hand to the Findings page. Each KPI
+ * + WhatsNew tile becomes a tap target that drills into the matching
+ * filtered list — `severity` for the high/med/low cells, `view` for
+ * the resolved tab, `layer` for the LLM-verdict-rate cell.
+ */
+export interface FindingsFilter {
+  detector?: string;
+  directory?: string;
+  severity?: 'high' | 'medium' | 'low';
+  view?: 'open' | 'false-positive';
+  layer?: 3;
 }
 
 type WhatsNewTab = 'added' | 'resolved' | 'persisting';
@@ -21,7 +35,6 @@ type WhatsNewTab = 'added' | 'resolved' | 'persisting';
 export function Dashboard({
   scanId,
   onOpenFinding,
-  onScanStarted,
   onOpenFindings,
 }: DashboardProps): JSX.Element {
   const [scan, setScan] = useState<ScanRecord | null>(null);
@@ -29,6 +42,35 @@ export function Dashboard({
   const [loading, setLoading] = useState<boolean>(false);
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<WhatsNewTab>('added');
+  const [fixQueueCount, setFixQueueCount] = useState<number>(0);
+  const [combinedPromptBusy, setCombinedPromptBusy] = useState<boolean>(false);
+  const [combinedPrompt, setCombinedPrompt] = useState<string | null>(null);
+
+  // Pull the fix-queue size on mount + whenever the active scan changes
+  // so the dashboard's "Generate combined fix prompt" CTA shows the
+  // current count.
+  useEffect(() => {
+    listMarkedToFix()
+      .then((q) => setFixQueueCount(q.fingerprints.length))
+      .catch(() => undefined);
+  }, [scanId]);
+
+  const onGenerateCombined = async (): Promise<void> => {
+    if (fixQueueCount === 0) {
+      toast('Mark at least one finding for fix from its detail page.', 'warn');
+      return;
+    }
+    setCombinedPromptBusy(true);
+    try {
+      const r = await generateCombinedFixPrompt();
+      setCombinedPrompt(r.prompt);
+      toast(`Combined fix prompt ready (${r.findingCount} findings).`, 'info');
+    } catch (e) {
+      toast(`Failed: ${(e as Error).message}`, 'warn');
+    } finally {
+      setCombinedPromptBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!scanId) {
@@ -65,31 +107,69 @@ export function Dashboard({
   const heatmap = useMemo(() => buildRepoHeatmap(findings), [findings]);
   const highFindings = useMemo(() => findings.filter((f) => f.severity === 'high'), [findings]);
 
-  if (!scanId) {
-    return (
-      <EmptyState
-        onStart={async () => {
-          const { scanId: id } = await startScan({});
-          onScanStarted(id);
-        }}
-      />
-    );
-  }
-  if (err && !scan) return <div className="text-high">error: {err}</div>;
-  if (!scan) return <PageSkeleton />;
+  if (err && !scan && scanId) return <div className="text-high">error: {err}</div>;
+  if (scanId && !scan) return <PageSkeleton />;
 
-  const durationS = scan.finishedAt ? Math.round((scan.finishedAt - scan.startedAt) / 1000) : null;
+  // Empty-state defaults — render the Dashboard chrome with zeroes when
+  // no scan has been run yet. Replaces the old standalone EmptyState
+  // page so the operator sees the same layout from minute one and
+  // doesn't have to context-switch into a "real" dashboard after the
+  // first scan completes. The "Run scan" affordance lives in the top
+  // bar regardless of whether a scan exists.
+  const workspaceLabel = scan
+    ? scan.workspaceRoot.split('/').slice(-2).join(' / ')
+    : 'no scan yet';
+  const durationS =
+    scan?.finishedAt ? Math.round((scan.finishedAt - scan.startedAt) / 1000) : null;
 
   return (
     <div className="space-y-8 max-w-screen-2xl">
+      {fixQueueCount > 0 && (
+        <section className="rounded-lg border border-accent/40 bg-accent/5 px-5 py-3 flex items-center gap-3 flex-wrap">
+          <Sparkles size={14} className="text-accent" />
+          <span className="text-sm text-ink">
+            <span className="font-semibold">{fixQueueCount}</span>{' '}
+            finding{fixQueueCount === 1 ? '' : 's'} marked to fix
+          </span>
+          <span className="text-xs text-muted font-mono">
+            queue lives at <code>.rothunter/marked-to-fix.json</code>
+          </span>
+          <button
+            type="button"
+            disabled={combinedPromptBusy}
+            onClick={() => void onGenerateCombined()}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-accent text-panel text-xs font-medium px-3 py-1.5 hover:bg-accent/90 disabled:opacity-50"
+          >
+            {combinedPromptBusy ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Sparkles size={12} />
+            )}
+            {combinedPromptBusy ? 'Building…' : 'Build combined fix prompt'}
+          </button>
+        </section>
+      )}
       <SectionHeader
-        eyebrow={`SCAN SUMMARY · ${scan.workspaceRoot.split('/').slice(-2).join(' / ')}`}
-        title={renderSerifSentence(counts.high, diff?.added.length ?? 0)}
+        eyebrow={`SCAN SUMMARY · ${workspaceLabel}`}
+        title={
+          scan
+            ? renderSerifSentence(counts.high, diff?.added.length ?? 0)
+            : (
+              <span>
+                <span className="text-ink">No scan yet.</span>{' '}
+                <span className="text-muted">Run one from the top bar to populate the dashboard.</span>
+              </span>
+            )
+        }
         meta={
           <div className="space-y-1">
-            <div>scan finished in {durationS != null ? formatDuration(durationS) : '—'}</div>
             <div>
-              verdicts by <span className="text-ink">qwen2.5-coder-14b</span>
+              {scan
+                ? `scan finished in ${durationS != null ? formatDuration(durationS) : '—'}`
+                : 'awaiting first scan'}
+            </div>
+            <div>
+              verdicts by <span className="text-ink">local LLM</span>
             </div>
             <RefreshDot visible={loading} />
           </div>
@@ -101,12 +181,36 @@ export function Dashboard({
           label="findings"
           value={counts.total}
           delta={diff ? diff.added.length - diff.removed.length : undefined}
+          onClick={scan ? () => onOpenFindings?.() : undefined}
         />
-        <KpiCell label="high" value={counts.high} tone="high" delta={diffSeverity(diff, 'high')} />
-        <KpiCell label="med" value={counts.med} tone="med" delta={diffSeverity(diff, 'medium')} />
-        <KpiCell label="low" value={counts.low} tone="low" delta={diffSeverity(diff, 'low')} />
-        <KpiCell label="symbols" value={(scan.symbolsCount ?? 0).toLocaleString('en-US')} />
-        <KpiCell label="LLM verdict rate" value={`${llmVerdictPct(findings)}%`} tone="accent" />
+        <KpiCell
+          label="high"
+          value={counts.high}
+          tone="high"
+          delta={diffSeverity(diff, 'high')}
+          onClick={scan ? () => onOpenFindings?.({ severity: 'high' }) : undefined}
+        />
+        <KpiCell
+          label="med"
+          value={counts.med}
+          tone="med"
+          delta={diffSeverity(diff, 'medium')}
+          onClick={scan ? () => onOpenFindings?.({ severity: 'medium' }) : undefined}
+        />
+        <KpiCell
+          label="low"
+          value={counts.low}
+          tone="low"
+          delta={diffSeverity(diff, 'low')}
+          onClick={scan ? () => onOpenFindings?.({ severity: 'low' }) : undefined}
+        />
+        <KpiCell label="symbols" value={(scan?.symbolsCount ?? 0).toLocaleString('en-US')} />
+        <KpiCell
+          label="LLM verdict rate"
+          value={`${llmVerdictPct(findings)}%`}
+          tone="accent"
+          onClick={scan ? () => onOpenFindings?.({ layer: 3 }) : undefined}
+        />
       </KpiStrip>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -126,6 +230,101 @@ export function Dashboard({
         onOpenFinding={onOpenFinding}
         onViewAll={onOpenFindings}
       />
+
+      {combinedPrompt != null && (
+        <CombinedFixPromptModal
+          prompt={combinedPrompt}
+          count={fixQueueCount}
+          onClose={() => setCombinedPrompt(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Modal that renders the deterministically-built combined fix prompt covering
+ * every marked-to-fix finding in one block. Copy-paste into Claude
+ * Code / Cursor / Copilot Chat to fix the whole batch.
+ */
+function CombinedFixPromptModal({
+  prompt,
+  count,
+  onClose,
+}: {
+  prompt: string;
+  count: number;
+  onClose: () => void;
+}): JSX.Element {
+  const [copied, setCopied] = useState<boolean>(false);
+  const onCopy = async (): Promise<void> => {
+    try {
+      await copyText(prompt);
+      setCopied(true);
+      toast('Combined prompt copied to clipboard.', 'info');
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      toast(`Copy failed: ${(e as Error).message}`, 'warn');
+    }
+  };
+  return (
+    <div
+      className="fixed z-50 bg-black/80 backdrop-blur-md flex items-center justify-center"
+      style={{
+        top: '-100px',
+        left: 0,
+        right: 0,
+        bottom: '-100px',
+        paddingTop: 'calc(100px + max(0.75rem, env(safe-area-inset-top)))',
+        paddingBottom: 'calc(100px + max(0.75rem, env(safe-area-inset-bottom)))',
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-3xl max-h-[85vh] flex flex-col rounded-lg border border-border bg-panel shadow-2xl overflow-hidden">
+        <header className="px-4 py-3 border-b border-border-soft flex items-center gap-3">
+          <Sparkles size={15} className="text-accent shrink-0" />
+          <div className="min-w-0">
+            <div className="font-serif text-base font-semibold text-ink">Combined fix prompt</div>
+            <div className="text-[11px] text-muted font-mono">
+              {count} finding{count === 1 ? '' : 's'} · paste into Claude Code · Codex · Cursor · Copilot Chat
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto w-7 h-7 rounded flex items-center justify-center text-muted hover:text-ink hover:bg-bg"
+          >
+            <X size={14} />
+          </button>
+        </header>
+        <div className="flex-1 overflow-y-auto p-4">
+          <pre className="whitespace-pre-wrap break-words text-xs font-mono text-ink leading-relaxed bg-bg rounded border border-border-soft p-3">
+            {prompt}
+          </pre>
+        </div>
+        <footer className="px-4 py-3 border-t border-border-soft flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 rounded text-xs font-medium text-muted hover:text-ink hover:bg-bg"
+          >
+            Close
+          </button>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => void onCopy()}
+            className="px-3 py-1.5 rounded text-xs font-medium bg-accent text-panel hover:bg-accent/90 flex items-center gap-1.5"
+          >
+            <Sparkles size={12} />
+            {copied ? 'Copied' : 'Copy prompt'}
+          </button>
+        </footer>
+      </div>
     </div>
   );
 }
@@ -144,36 +343,6 @@ function renderSerifSentence(high: number, added: number): JSX.Element {
         <span className="text-muted">No new ones vs last scan.</span>
       )}
     </span>
-  );
-}
-
-function EmptyState({ onStart }: { onStart: () => Promise<void> }): JSX.Element {
-  const [workspace, setWorkspace] = useState<string | null>(null);
-  useEffect(() => {
-    getWorkspace()
-      .then((w) => setWorkspace(w.name ?? w.current))
-      .catch(() => undefined);
-  }, []);
-  return (
-    <div className="max-w-2xl mx-auto pt-24 text-center px-4">
-      <div className="text-[11px] uppercase tracking-widest text-muted font-mono mb-3">
-        no scans yet
-      </div>
-      <h1 className="font-serif text-4xl text-ink mb-4">Catch the rot in your codebase.</h1>
-      <p className="text-muted mb-8">
-        Run the first scan against{' '}
-        <code className="font-mono text-ink break-all">{workspace ?? '…'}</code>. The local LLM
-        sidecar verdicts every LLM-confirmed finding before it lands here. Pick a different folder from the
-        picker in the top bar.
-      </p>
-      <button
-        onClick={() => void onStart()}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-accent text-panel font-medium hover:bg-accent/90"
-      >
-        <Play size={14} fill="currentColor" />
-        Run scan
-      </button>
-    </div>
   );
 }
 

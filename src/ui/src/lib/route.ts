@@ -4,7 +4,15 @@
  */
 export type Route =
   | { name: 'dashboard' }
-  | { name: 'findings'; scanId?: string; detector?: string; directory?: string }
+  | {
+      name: 'findings';
+      scanId?: string;
+      detector?: string;
+      directory?: string;
+      severity?: 'high' | 'medium' | 'low';
+      view?: 'open' | 'false-positive';
+      layer?: 3;
+    }
   | { name: 'finding'; fingerprint: string }
   | { name: 'running'; scanId: string }
   | { name: 'history' }

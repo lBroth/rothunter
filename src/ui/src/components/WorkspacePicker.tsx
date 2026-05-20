@@ -40,6 +40,15 @@ export function WorkspacePicker(): JSX.Element {
     setErr(null);
     try {
       await setWorkspace(target);
+      // Drop the URL hash before reloading. Without this, hashes that
+      // point at workspace-scoped resources (`#/running/scan_xxx`,
+      // `#/finding/<fp>`) survive the switch and the UI mounts a
+      // ScanRunning / FindingDetail page for a scan that doesn't
+      // belong to the new workspace — operator sees an "empty scan"
+      // page instead of the dashboard.
+      if (window.location.hash) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
       window.location.reload();
     } catch (e) {
       setErr((e as Error).message);

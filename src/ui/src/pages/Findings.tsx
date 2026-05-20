@@ -1,46 +1,86 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { JSX } from 'react';
-import { ChevronDown, Search } from 'lucide-react';
+import { Ban, Loader2, RotateCcw, Sparkles, X } from 'lucide-react';
 import type { Finding, ScanRecord } from '../lib/api.js';
-import { getScan } from '../lib/api.js';
+import {
+  batchFalsePositives,
+  batchMarkedToFix,
+  generateCombinedFixPrompt,
+  getScan,
+  listMarkedToFix,
+} from '../lib/api.js';
 import { SectionHeader } from '../components/SectionHeader.js';
 import { ClusterPill, SeverityChip } from '../components/Chips.js';
+import { Checkbox } from '../components/Checkbox.js';
 import { PageSkeleton, RefreshDot } from '../components/Skeleton.js';
-import { comingSoon } from '../lib/toast.js';
+import { toast } from '../lib/toast.js';
+import { copyText } from '../lib/clipboard.js';
 import { setQueue } from '../lib/finding-queue.js';
 import { extractCluster } from '../lib/cluster.js';
+import {
+  FindingsFilterBar,
+  PageButton,
+  SortDropdown,
+  type Sev,
+  type SortKey,
+} from '../components/FindingsFilterBar.js';
 
 interface FindingsProps {
   scanId: string | null;
   onOpenFinding: (fingerprint: string) => void;
   initialDetector?: string;
   initialDirectory?: string;
+  /** Severity pre-filter — when set, only that severity stays toggled on. */
+  initialSeverity?: 'high' | 'medium' | 'low';
+  /** Initial status tab — `resolved` / `false-positive` lets the dashboard
+   *  drill straight into the right bucket from the KPI strip. */
+  initialView?: 'open' | 'false-positive';
+  /** Initial layer filter — the dashboard's LLM-verdict-rate cell sends
+   *  `layer=3` so the operator lands on findings with an LLM verdict. */
+  initialLayer?: 3;
 }
 
-type Sev = 'high' | 'medium' | 'low';
-type SortKey = 'severity-cluster' | 'severity' | 'age' | 'detector';
-
-const TODO = (label: string) => () => comingSoon(label);
 
 export function Findings({
   scanId,
   onOpenFinding,
   initialDetector,
   initialDirectory,
+  initialSeverity,
+  initialView,
+  initialLayer,
 }: FindingsProps): JSX.Element {
   const [scan, setScan] = useState<ScanRecord | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [sev, setSev] = useState<Set<Sev>>(new Set(['high', 'medium', 'low']));
+  const [sev, setSev] = useState<Set<Sev>>(
+    initialSeverity ? new Set([initialSeverity]) : new Set(['high', 'medium', 'low']),
+  );
   const [detector, setDetector] = useState<string>(initialDetector ?? 'any');
-  const [cluster, setCluster] = useState<string>('any');
   const [directory, setDirectory] = useState<string>(initialDirectory ?? 'any');
   const [query, setQuery] = useState<string>('');
   const [sort, setSort] = useState<SortKey>('severity-cluster');
   const [grouped, setGrouped] = useState<boolean>(true);
   const [page, setPage] = useState<number>(1);
-  const [view, setView] = useState<'open' | 'resolved' | 'false-positive'>('open');
+  const [view, setView] = useState<'open' | 'false-positive'>(
+    initialView === 'false-positive' ? 'false-positive' : 'open',
+  );
+  const [layerFilter] = useState<3 | undefined>(initialLayer);
   const pageSize = 18;
+  // Bulk selection — fingerprints (lead per group) currently ticked in
+  // the table. The header checkbox flips ALL filtered rows on/off.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Server-side fix-queue snapshot. Refreshed after every bulk add so
+  // the "in queue" indicator stays accurate without a full reload.
+  const [fixQueue, setFixQueue] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState<boolean>(false);
+  const [combinedPrompt, setCombinedPrompt] = useState<string | null>(null);
+
+  useEffect(() => {
+    listMarkedToFix()
+      .then((q) => setFixQueue(new Set(q.fingerprints)))
+      .catch(() => undefined);
+  }, [scanId]);
 
   useEffect(() => {
     if (!scanId) {
@@ -67,27 +107,17 @@ export function Findings({
     };
   }, [scanId]);
 
-  // Split scan.findings into open (no resolvedAt) + resolved (has resolvedAt).
-  // Both share the persisted `findings` array — the resolved bucket is a
-  // virtual view on top, populated by the single-finding rerun endpoint.
-  const allLive = scan?.findings ?? [];
-  const openFindings = allLive.filter((f) => !f.resolvedAt);
-  const resolvedFindings = allLive.filter((f) => !!f.resolvedAt);
+  // Per-scan findings + FPs from the server's partition. Open list
+  // drops any `resolvedAt`-stamped entries — the resolved bucket was
+  // dropped from the UI because in practice findings just disappear
+  // when the underlying defect is fixed (the next scan won't emit
+  // them), so a separate tab stayed empty in real usage.
+  const openFindings = (scan?.findings ?? []).filter((f) => !f.resolvedAt);
   const fpFindings = scan?.falsePositives ?? [];
-  const findings =
-    view === 'false-positive' ? fpFindings : view === 'resolved' ? resolvedFindings : openFindings;
+  const findings = view === 'false-positive' ? fpFindings : openFindings;
 
   const detectors = useMemo(
     () => ['any', ...Array.from(new Set(findings.map((f) => f.detectorId))).sort()],
-    [findings],
-  );
-  const clusters = useMemo(
-    () => [
-      'any',
-      ...Array.from(
-        new Set(findings.map((f) => extractCluster(f)).filter(Boolean) as string[]),
-      ).sort(),
-    ],
     [findings],
   );
   const directories = useMemo(
@@ -104,8 +134,8 @@ export function Findings({
 
   const filtered = useMemo(() => {
     let list = findings.filter((f) => sev.has(f.severity));
+    if (layerFilter != null) list = list.filter((f) => f.layer === layerFilter);
     if (detector !== 'any') list = list.filter((f) => f.detectorId === detector);
-    if (cluster !== 'any') list = list.filter((f) => extractCluster(f) === cluster);
     if (directory !== 'any')
       list = list.filter((f) => topLevelDir(f.evidence[0]?.file ?? '') === directory);
     if (query.trim()) {
@@ -126,7 +156,7 @@ export function Findings({
       return 0;
     });
     return list;
-  }, [findings, sev, detector, cluster, directory, query, sort]);
+  }, [findings, sev, detector, directory, query, sort, layerFilter]);
 
   interface ClusterGroup {
     key: string;
@@ -187,6 +217,136 @@ export function Findings({
     onOpenFinding(fp);
   };
 
+  // Master select — fingerprints of the FILTERED set (every row the
+  // operator currently sees, not just the current page). Lets a bulk
+  // sweep cover everything matching the active filter in one click.
+  const filteredFps = useMemo(() => filtered.map((f) => f.fingerprint), [filtered]);
+  const allSelected = filteredFps.length > 0 && filteredFps.every((fp) => selected.has(fp));
+  const someSelected = !allSelected && filteredFps.some((fp) => selected.has(fp));
+  const toggleAll = (): void => {
+    setSelected((prev) => {
+      if (allSelected) {
+        const next = new Set(prev);
+        for (const fp of filteredFps) next.delete(fp);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const fp of filteredFps) next.add(fp);
+      return next;
+    });
+  };
+  const toggleOne = (fp: string): void => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(fp)) next.delete(fp);
+      else next.add(fp);
+      return next;
+    });
+  };
+
+  // Bulk add → POST mark-to-fix for every selected fingerprint in
+  // parallel. Updates the local queue snapshot once + emits a single
+  // toast with the resulting count.
+  const bulkAddToFix = async (): Promise<void> => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const toAdd = [...selected].filter((fp) => !fixQueue.has(fp));
+      // Single batched request — N parallel POSTs raced on the server's
+      // JSON file write and only one survived (88 marked → 11 stored).
+      await batchMarkedToFix({ add: toAdd });
+      const refreshed = await listMarkedToFix();
+      setFixQueue(new Set(refreshed.fingerprints));
+      toast(`Added ${toAdd.length} finding${toAdd.length === 1 ? '' : 's'} to fix queue.`, 'info');
+    } catch (e) {
+      toast(`Bulk add failed: ${(e as Error).message}`, 'warn');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkRemoveFromFix = async (): Promise<void> => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const toRemove = [...selected].filter((fp) => fixQueue.has(fp));
+      await batchMarkedToFix({ remove: toRemove });
+      const refreshed = await listMarkedToFix();
+      setFixQueue(new Set(refreshed.fingerprints));
+      toast(`Removed ${toRemove.length} finding${toRemove.length === 1 ? '' : 's'} from fix queue.`, 'info');
+    } catch (e) {
+      toast(`Bulk remove failed: ${(e as Error).message}`, 'warn');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  // Bulk mark-as-FP — batches every selected fingerprint into one
+  // server round-trip + refreshes the scan record so the rows move
+  // from `open` into the `FP` tab without a manual reload. The single
+  // POST endpoint had the same write-stomp race as mark-to-fix; the
+  // batch endpoint serialises through the same mutex on the server.
+  const bulkMarkFp = async (): Promise<void> => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const toAdd = [...selected];
+      await batchFalsePositives({ add: toAdd });
+      if (scanId) {
+        const refreshed = await getScan(scanId);
+        setScan(refreshed);
+      }
+      setSelected(new Set());
+      toast(
+        `Marked ${toAdd.length} finding${toAdd.length === 1 ? '' : 's'} as false positive.`,
+        'info',
+      );
+    } catch (e) {
+      toast(`Bulk FP failed: ${(e as Error).message}`, 'warn');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkUnmarkFp = async (): Promise<void> => {
+    if (selected.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const toRemove = [...selected];
+      await batchFalsePositives({ remove: toRemove });
+      if (scanId) {
+        const refreshed = await getScan(scanId);
+        setScan(refreshed);
+      }
+      setSelected(new Set());
+      toast(
+        `Unmarked ${toRemove.length} finding${toRemove.length === 1 ? '' : 's'} as false positive.`,
+        'info',
+      );
+    } catch (e) {
+      toast(`Bulk unmark FP failed: ${(e as Error).message}`, 'warn');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const onGenerateCombined = async (): Promise<void> => {
+    if (fixQueue.size === 0) {
+      toast('Mark at least one finding for fix first.', 'warn');
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      const r = await generateCombinedFixPrompt();
+      setCombinedPrompt(r.prompt);
+      toast(`Combined prompt ready (${r.findingCount} findings).`, 'info');
+    } catch (e) {
+      toast(`Failed: ${(e as Error).message}`, 'warn');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   if (err && !scan) return <div className="text-high">error: {err}</div>;
   if (!scan && loading) return <PageSkeleton rows={2} />;
   if (!scan) {
@@ -209,9 +369,9 @@ export function Findings({
             </span>{' '}
             <span className="text-muted">
               · {filtered.length}{' '}
-              {view === 'false-positive' ? 'flagged' : view === 'resolved' ? 'resolved' : 'findings'} of{' '}
+              {view === 'false-positive' ? 'flagged' : 'findings'} of{' '}
               {findings.length}{' '}
-              {view === 'false-positive' ? 'FP' : view === 'resolved' ? 'resolved' : 'open'}
+              {view === 'false-positive' ? 'FP' : 'open'}
             </span>
           </span>
         }
@@ -235,21 +395,6 @@ export function Findings({
               <button
                 type="button"
                 onClick={() => {
-                  setView('resolved');
-                  setPage(1);
-                }}
-                className={
-                  'px-2.5 py-1 border-l border-border ' +
-                  (view === 'resolved'
-                    ? 'bg-low/10 text-low'
-                    : 'text-muted hover:text-ink')
-                }
-              >
-                resolved · {resolvedFindings.length}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
                   setView('false-positive');
                   setPage(1);
                 }}
@@ -259,6 +404,7 @@ export function Findings({
                     ? 'bg-accent/10 text-accent'
                     : 'text-muted hover:text-ink')
                 }
+                title="False positives — LLM auto-routed and manually marked. Auto entries get an `AUTO` chip."
               >
                 FP · {fpFindings.length}
               </button>
@@ -283,15 +429,12 @@ export function Findings({
         }
       />
 
-      <FilterBar
+      <FindingsFilterBar
         sev={sev}
         setSev={setSev}
         detectors={detectors}
         detector={detector}
         setDetector={setDetector}
-        clusters={clusters}
-        cluster={cluster}
-        setCluster={setCluster}
         directories={directories}
         directory={directory}
         setDirectory={setDirectory}
@@ -303,6 +446,96 @@ export function Findings({
         query={query}
         setQuery={setQuery}
       />
+
+      {(selected.size > 0 || fixQueue.size > 0) && (
+        <section className="sticky top-2 z-20 rounded-lg border border-accent/40 bg-panel/95 backdrop-blur px-4 py-3 flex items-center gap-3 flex-wrap shadow-lg shadow-accent/10">
+          {selected.size > 0 ? (
+            <>
+              <span className="text-sm text-ink">
+                <span className="font-semibold">{selected.size}</span> selected
+              </span>
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => void bulkAddToFix()}
+                className="rounded-md border border-accent/50 bg-accent/15 text-accent text-xs font-mono px-2.5 py-1 hover:bg-accent/25 disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                <Sparkles size={11} /> Add to fix queue
+              </button>
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => void bulkRemoveFromFix()}
+                className="rounded-md border border-border bg-panel text-xs font-mono px-2.5 py-1 hover:bg-bg disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                <X size={11} /> Remove from queue
+              </button>
+              {view === 'false-positive' ? (
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void bulkUnmarkFp()}
+                  className="rounded-md border border-border bg-panel text-xs font-mono px-2.5 py-1 hover:bg-bg disabled:opacity-50 inline-flex items-center gap-1.5"
+                >
+                  <RotateCcw size={11} /> Unmark FP
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void bulkMarkFp()}
+                  className="rounded-md border border-border bg-panel text-xs font-mono px-2.5 py-1 hover:bg-bg disabled:opacity-50 inline-flex items-center gap-1.5"
+                >
+                  <Ban size={11} /> Mark as FP
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="text-xs text-muted hover:text-ink"
+              >
+                Clear selection
+              </button>
+            </>
+          ) : (
+            <span className="text-sm text-muted">No rows selected</span>
+          )}
+          <span className="text-xs text-muted font-mono ml-auto">
+            fix queue: <span className="text-accent">{fixQueue.size}</span>
+          </span>
+          {fixQueue.size > 0 && (
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={async () => {
+                setBulkBusy(true);
+                try {
+                  await batchMarkedToFix({ remove: [...fixQueue] });
+                  setFixQueue(new Set());
+                  toast('Fix queue cleared.', 'info');
+                } catch (e) {
+                  toast(`Failed: ${(e as Error).message}`, 'warn');
+                } finally {
+                  setBulkBusy(false);
+                }
+              }}
+              className="rounded-md border border-border bg-panel text-xs font-mono px-2.5 py-1 hover:bg-bg disabled:opacity-50 inline-flex items-center gap-1.5"
+              title="Empty the fix queue without generating a prompt"
+            >
+              <X size={11} /> Clear queue
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={bulkBusy || fixQueue.size === 0}
+            onClick={() => void onGenerateCombined()}
+            className="rounded-md bg-accent text-panel text-xs font-medium px-3 py-1.5 hover:bg-accent/90 disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            {bulkBusy ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+            {bulkBusy ? 'Building…' : 'Build combined fix prompt'}
+          </button>
+        </section>
+      )}
 
       {/* Mobile — card list (≤ md). */}
       <section className="lg:hidden rounded-lg border border-border bg-panel divide-y divide-border-soft">
@@ -364,7 +597,14 @@ export function Findings({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-[10px] uppercase tracking-widest text-muted font-mono border-b border-border-soft">
-              <th className="w-8 pl-4 py-3 text-left font-normal"></th>
+              <th className="w-8 pl-4 py-3 text-left font-normal">
+                <Checkbox
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  onChange={toggleAll}
+                  ariaLabel="select all filtered findings"
+                />
+              </th>
               <th className="w-20 py-3 text-left font-normal">sev</th>
               <th className="w-56 py-3 text-left font-normal">detector</th>
               <th className="py-3 text-left font-normal">title</th>
@@ -396,11 +636,11 @@ export function Findings({
                     onClick={() => openFinding(lead.fingerprint)}
                   >
                     <td className="pl-4 py-2.5">
-                      <input
-                        type="checkbox"
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={TODO('select for bulk action')}
-                        className="accent-accent"
+                      <Checkbox
+                        checked={selected.has(lead.fingerprint)}
+                        onChange={() => toggleOne(lead.fingerprint)}
+                        stopPropagation
+                        ariaLabel="select finding"
                       />
                     </td>
                     <td className="py-2.5">
@@ -408,6 +648,17 @@ export function Findings({
                     </td>
                     <td className="py-2.5 font-mono text-xs text-ink truncate">{detectorLabel}</td>
                     <td className="py-2.5 text-sm text-ink truncate max-w-md">
+                      {fixQueue.has(lead.fingerprint) && (
+                        <Sparkles size={11} className="inline text-accent mr-1.5" />
+                      )}
+                      {lead.llmFalsePositive && (
+                        <span
+                          className="mr-2 text-[10px] font-mono text-low border border-low/40 rounded px-1.5 py-px uppercase tracking-wider"
+                          title={`LLM auto-FP — ${lead.llmFalsePositive.reason}`}
+                        >
+                          auto
+                        </span>
+                      )}
                       {stripBackticks(lead.title)}
                       {g.findings.length > 1 && (
                         <span className="ml-2 text-[10px] font-mono text-accent border border-accent/40 rounded px-1.5 py-px">
@@ -420,7 +671,9 @@ export function Findings({
                       {lead.evidence[0]?.file}:{lead.evidence[0]?.range.startLine}
                     </td>
                     <td className="py-2.5 text-right font-mono text-xs text-muted">—</td>
-                    <td className="py-2.5 pr-5 text-right text-xs text-muted">open</td>
+                    <td className="py-2.5 pr-5 text-right text-xs text-muted">
+                      {view === 'false-positive' ? (lead.llmFalsePositive ? 'auto FP' : 'manual FP') : 'open'}
+                    </td>
                   </tr>
                 );
               })
@@ -450,199 +703,123 @@ export function Findings({
           </div>
         </div>
       </section>
+
+      {combinedPrompt != null && (
+        <CombinedFixPromptModal
+          prompt={combinedPrompt}
+          count={fixQueue.size}
+          onClose={() => setCombinedPrompt(null)}
+          onAfterCopy={async () => {
+            // User just took the prompt to the agent — the queue has
+            // served its purpose. Clear it server-side so the next
+            // batch starts empty without a separate Clear click. Drop
+            // the modal too: the user pasted and is done.
+            if (fixQueue.size === 0) return;
+            try {
+              await batchMarkedToFix({ remove: [...fixQueue] });
+              setFixQueue(new Set());
+              setSelected(new Set());
+              setCombinedPrompt(null);
+              toast('Fix queue cleared.', 'info');
+            } catch (e) {
+              toast(`Failed to clear queue: ${(e as Error).message}`, 'warn');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
 
-interface FilterBarProps {
-  sev: Set<Sev>;
-  setSev: (s: Set<Sev>) => void;
-  detectors: string[];
-  detector: string;
-  setDetector: (v: string) => void;
-  clusters: string[];
-  cluster: string;
-  setCluster: (v: string) => void;
-  directories: string[];
-  directory: string;
-  setDirectory: (v: string) => void;
-  view: 'open' | 'resolved' | 'false-positive';
-  setView: (v: 'open' | 'resolved' | 'false-positive') => void;
-  query: string;
-  setQuery: (v: string) => void;
-}
-
-function FilterBar({
-  sev,
-  setSev,
-  detectors,
-  detector,
-  setDetector,
-  clusters,
-  cluster,
-  setCluster,
-  directories,
-  directory,
-  setDirectory,
-  view,
-  setView,
-  query,
-  setQuery,
-}: FilterBarProps): JSX.Element {
-  const toggle = (s: Sev) => {
-    const next = new Set(sev);
-    if (next.has(s)) next.delete(s);
-    else next.add(s);
-    setSev(next);
+/**
+ * Modal that renders the deterministically-built combined fix prompt for every
+ * finding in the fix queue. Identical shape to the dashboard's
+ * version — kept inline here so the list page is self-contained.
+ */
+function CombinedFixPromptModal({
+  prompt,
+  count,
+  onClose,
+  onAfterCopy,
+}: {
+  prompt: string;
+  count: number;
+  onClose: () => void;
+  /** Fires after a successful clipboard write — used to clear the
+   * fix queue once the operator has taken the prompt away. */
+  onAfterCopy?: () => void | Promise<void>;
+}): JSX.Element {
+  const [copied, setCopied] = useState<boolean>(false);
+  const onCopy = async (): Promise<void> => {
+    try {
+      await copyText(prompt);
+      setCopied(true);
+      toast('Combined prompt copied.', 'info');
+      setTimeout(() => setCopied(false), 1500);
+      await onAfterCopy?.();
+    } catch (e) {
+      toast(`Copy failed: ${(e as Error).message}`, 'warn');
+    }
   };
   return (
-    <div className="flex flex-wrap items-center gap-2 -mx-1 px-1">
-      <SevToggle active={sev.has('high')} onClick={() => toggle('high')} severity="high" />
-      <SevToggle active={sev.has('medium')} onClick={() => toggle('medium')} severity="medium" />
-      <SevToggle active={sev.has('low')} onClick={() => toggle('low')} severity="low" />
-      <Dropdown label="detector" value={detector} options={detectors} onChange={setDetector} />
-      <Dropdown label="cluster" value={cluster} options={clusters} onChange={setCluster} />
-      <Dropdown label="directory" value={directory} options={directories} onChange={setDirectory} />
-      <Dropdown
-        label="status"
-        value={view}
-        options={['open', 'resolved', 'false-positive']}
-        onChange={(v) => setView(v as 'open' | 'resolved' | 'false-positive')}
-      />
-      <div className="flex-1 min-w-[200px] relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="filter by title, path or fingerprint…"
-          className="w-full rounded-md border border-border bg-panel pl-9 pr-3 py-1.5 text-xs text-ink font-mono placeholder-muted focus:border-accent focus:outline-none"
-        />
+    <div
+      className="fixed z-50 bg-black/80 backdrop-blur-md flex items-center justify-center"
+      style={{
+        top: '-100px',
+        left: 0,
+        right: 0,
+        bottom: '-100px',
+        paddingTop: 'calc(100px + max(0.75rem, env(safe-area-inset-top)))',
+        paddingBottom: 'calc(100px + max(0.75rem, env(safe-area-inset-bottom)))',
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-3xl max-h-[85vh] flex flex-col rounded-lg border border-border bg-panel shadow-2xl overflow-hidden">
+        <header className="px-4 py-3 border-b border-border-soft flex items-center gap-3">
+          <Sparkles size={15} className="text-accent shrink-0" />
+          <div className="min-w-0">
+            <div className="font-serif text-base font-semibold text-ink">Combined fix prompt</div>
+            <div className="text-[11px] text-muted font-mono">
+              {count} finding{count === 1 ? '' : 's'} · paste into Claude Code · Cursor · Codex
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto w-7 h-7 rounded flex items-center justify-center text-muted hover:text-ink hover:bg-bg"
+          >
+            <X size={14} />
+          </button>
+        </header>
+        <div className="flex-1 overflow-y-auto p-4">
+          <pre className="whitespace-pre-wrap break-words text-xs font-mono text-ink leading-relaxed bg-bg rounded border border-border-soft p-3">
+            {prompt}
+          </pre>
+        </div>
+        <footer className="px-4 py-3 border-t border-border-soft flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 rounded text-xs font-medium text-muted hover:text-ink hover:bg-bg"
+          >
+            Close
+          </button>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => void onCopy()}
+            className="px-3 py-1.5 rounded text-xs font-medium bg-accent text-panel hover:bg-accent/90 flex items-center gap-1.5"
+          >
+            <Sparkles size={12} />
+            {copied ? 'Copied' : 'Copy prompt'}
+          </button>
+        </footer>
       </div>
-      <button
-        type="button"
-        onClick={() => {
-          setSev(new Set(['high', 'medium', 'low']));
-          setDetector('any');
-          setCluster('any');
-          setDirectory('any');
-          setQuery('');
-        }}
-        className="text-xs text-muted hover:text-ink"
-      >
-        Reset
-      </button>
     </div>
-  );
-}
-
-function SevToggle({
-  active,
-  onClick,
-  severity,
-}: {
-  active: boolean;
-  onClick: () => void;
-  severity: Sev;
-}): JSX.Element {
-  const cls = {
-    high: active ? 'bg-high/15 border-high/60 text-high' : 'border-border text-muted',
-    medium: active ? 'bg-med/15 border-med/60 text-med' : 'border-border text-muted',
-    low: active ? 'bg-low/20 border-low/60 text-low' : 'border-border text-muted',
-  }[severity];
-  const label = severity === 'medium' ? 'MED' : severity.toUpperCase();
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] font-bold tracking-wider font-mono ' +
-        cls
-      }
-    >
-      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-      {label}
-    </button>
-  );
-}
-
-interface DropdownProps {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: ((v: string) => void) | (() => void);
-}
-
-function Dropdown({ label, value, options, onChange }: DropdownProps): JSX.Element {
-  return (
-    <label className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-border bg-panel text-xs text-muted font-mono">
-      {label}
-      <select
-        value={value}
-        onChange={(e) => (onChange as (v: string) => void)(e.target.value)}
-        className="bg-transparent text-ink focus:outline-none"
-      >
-        {options.map((o) => (
-          <option key={o} value={o} className="bg-panel">
-            {o}
-          </option>
-        ))}
-      </select>
-      <ChevronDown size={12} className="text-muted" />
-    </label>
-  );
-}
-
-interface SortDropdownProps {
-  value: SortKey;
-  setValue: (v: SortKey) => void;
-}
-
-function SortDropdown({ value, setValue }: SortDropdownProps): JSX.Element {
-  return (
-    <label className="inline-flex items-center gap-1 cursor-pointer">
-      <select
-        value={value}
-        onChange={(e) => setValue(e.target.value as SortKey)}
-        className="bg-panel border border-border rounded-md px-2 py-1 text-xs text-ink font-mono focus:outline-none"
-        aria-label="sort"
-      >
-        <option value="severity-cluster">severity, then cluster size</option>
-        <option value="severity">severity</option>
-        <option value="age">age</option>
-        <option value="detector">detector</option>
-      </select>
-    </label>
-  );
-}
-
-function PageButton({
-  children,
-  active,
-  disabled,
-  onClick,
-}: {
-  children: React.ReactNode;
-  active?: boolean;
-  disabled?: boolean;
-  onClick?: () => void;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={
-        'w-7 h-7 rounded text-xs font-mono ' +
-        (active
-          ? 'bg-ink text-panel'
-          : disabled
-            ? 'text-muted/40'
-            : 'text-muted hover:text-ink hover:bg-bg')
-      }
-    >
-      {children}
-    </button>
   );
 }
 

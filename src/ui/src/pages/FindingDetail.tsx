@@ -12,10 +12,13 @@ import {
   getFinding,
   getScan,
   listFalsePositives,
+  listMarkedToFix,
   listScans,
   markFalsePositive,
+  markToFix,
   rerunFindingVerdict,
   unmarkFalsePositive,
+  unmarkToFix,
 } from '../lib/api.js';
 import { neighbours } from '../lib/finding-queue.js';
 import { extractCluster } from '../lib/cluster.js';
@@ -52,6 +55,7 @@ export function FindingDetail({
   const [loading, setLoading] = useState<boolean>(false);
   const [promptOpen, setPromptOpen] = useState<boolean>(false);
   const [isFalsePositive, setIsFalsePositive] = useState<boolean>(false);
+  const [isMarkedToFix, setIsMarkedToFix] = useState<boolean>(false);
   const [rerunBusy, setRerunBusy] = useState<boolean>(false);
   const [resolved, setResolved] = useState<boolean>(false);
   // `true` when the evidence snippet captured at scan time does NOT match
@@ -119,6 +123,13 @@ export function FindingDetail({
     listFalsePositives()
       .then((fps) => {
         if (!cancelled) setIsFalsePositive(fps.includes(fingerprint));
+      })
+      .catch(() => undefined);
+    // Same shape for the marked-to-fix queue so the toggle label boots
+    // in the right state.
+    listMarkedToFix()
+      .then((q) => {
+        if (!cancelled) setIsMarkedToFix(q.fingerprints.includes(fingerprint));
       })
       .catch(() => undefined);
     // Reset shift state on every fingerprint switch so an old finding's
@@ -266,6 +277,30 @@ export function FindingDetail({
         >
           {rerunBusy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCcw size={11} />}
           {rerunBusy ? 'Re-checking…' : 'Re-run verdict'}
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            if (isMarkedToFix) {
+              await unmarkToFix(finding.fingerprint);
+              setIsMarkedToFix(false);
+              toast('Removed from fix queue.', 'info');
+            } else {
+              await markToFix(finding.fingerprint);
+              setIsMarkedToFix(true);
+              toast('Added to fix queue.', 'info');
+            }
+          }}
+          className={
+            'rounded-md border px-2.5 py-1 text-xs font-mono inline-flex items-center gap-1.5 ' +
+            (isMarkedToFix
+              ? 'border-accent/50 bg-accent/15 text-accent'
+              : 'border-border text-ink hover:bg-bg')
+          }
+          title="Queue this finding for the combined fix prompt on the dashboard"
+        >
+          <FlaskConical size={11} />
+          {isMarkedToFix ? 'In fix queue' : 'Add to fix queue'}
         </button>
         <button
           type="button"
@@ -453,12 +488,11 @@ function LlmVerdictCard({
         <span className="text-[11px] uppercase tracking-widest text-accent font-mono font-semibold">
           LLM verdict
         </span>
-        <span className="text-xs text-muted font-mono">qwen2.5-coder-14b-q4_k_m</span>
-        <span className="text-xs text-muted font-mono">· local · llama.cpp</span>
+        <span className="text-xs text-muted font-mono">local LLM</span>
         <span
           className={
             'ml-auto inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-bold tracking-wider font-mono ' +
-            (verdict.label === 'SAFE'
+            (verdict.label === 'FP'
               ? 'border-low/60 bg-low/15 text-low'
               : 'border-high/60 bg-high/15 text-high')
           }
@@ -777,13 +811,21 @@ function extractVerdictBlock(
   const m = /\*\*LLM verdict:\*\*\s*([^\n]+)/.exec(description);
   if (!m) return null;
   const line = m[1]!;
-  const labelMatch = /^(real cross-flow API race|real cross-flow race|real race|safe)/i.exec(line);
   const confMatch = /\(confidence (\d+(?:\.\d+)?)\)/.exec(line);
   const reason = line.replace(/^[^—]+—\s*/, '').replace(/\s*\(confidence [^)]+\)\s*$/, '');
-  const labelStr = labelMatch?.[1]?.toLowerCase() ?? '';
-  const label = labelStr.startsWith('safe') ? 'SAFE' : 'RACE';
+  // Detector-specific positive/negative labels come from
+  // applyClusterVerdict in the engine. Normalise the prefix to a
+  // single REAL / FP badge so the operator never has to learn the
+  // legacy race-vs-safe vocabulary just to read a dead-export or
+  // magic-numbers verdict.
+  const head = line.toLowerCase().split('—')[0]!.trim();
+  const isFp =
+    head.startsWith('safe') ||
+    head.startsWith('intentional') ||
+    head.startsWith('different concept') ||
+    head.startsWith('false positive');
   return {
-    label,
+    label: isFp ? 'FP' : 'REAL',
     reason,
     confidence: confMatch ? Number(confMatch[1]) : 0.5,
   };
