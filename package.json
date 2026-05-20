@@ -1,6 +1,6 @@
 {
   "name": "@lbroth/rothunter",
-  "version": "1.0.0-rc.4",
+  "version": "1.0.0-rc.5",
   "description": "Self-hosted code-hygiene engine for TypeScript / JavaScript codebases. Deterministic detectors + local LLM verdicts + dashboard.",
   "license": "MIT",
   "author": "lBroth",

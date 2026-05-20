@@ -65,25 +65,42 @@ initWorkspaceStore(bootCandidate);
 const SETTINGS: AppSettings = readSettings();
 
 /**
- * Resolve the UI bundle location, supporting both layouts:
- *   - dev / clone-and-run: `dist/server/index.js` → `../../src/ui/dist`
- *   - npm-installed:       `dist/server/index.js` → `../ui` (vite emits there
+ * Resolve the UI bundle location, supporting layouts:
+ *   - npm-installed: `dist/server/index.js` → `../ui` (vite emits there
  *     when `--outDir ../../dist/ui` is set at build time).
- * The first existing directory wins. When neither is present the server
- * still boots — the dashboard 404s but the API is fully usable.
+ *   - dev / clone-and-run: `dist/server/index.js` → `../../src/ui/dist`
+ *   - docker image (tsx watch on source): `src/server/index.ts` →
+ *     `../ui/dist`.
+ *
+ * Crucially this does NOT accept a directory just because it exists —
+ * the SOURCE `src/ui/` directory always exists when running from source
+ * and would otherwise match the npm-installed candidate, serving the
+ * un-bundled `index.html` (with `<script src="/src/main.tsx">`) that
+ * the browser can't resolve. Reported by users running the docker
+ * image. Each candidate has to pass `isBuiltUiDir` — `index.html`
+ * present AND an adjacent `assets/` directory, which only the Vite
+ * output has.
+ *
+ * `ROTHUNTER_UI_DIST` env override skips the search entirely.
  */
 const UI_DIST = (() => {
+  const override = process.env.ROTHUNTER_UI_DIST;
+  if (override && isBuiltUiDir(override)) return override;
   const here = import.meta.dirname;
   const candidates = [
-    path.resolve(here, '../ui'),         // npm-installed layout (preferred)
-    path.resolve(here, '../../src/ui/dist'), // local dev / clone-and-run
-    path.resolve(here, '../ui/dist'),    // legacy fallback
+    path.resolve(here, '../ui'),             // npm-installed (dist/ui)
+    path.resolve(here, '../../src/ui/dist'), // dev / clone-and-run
+    path.resolve(here, '../ui/dist'),        // docker tsx-from-source
   ];
   for (const c of candidates) {
-    if (existsSync(c)) return c;
+    if (isBuiltUiDir(c)) return c;
   }
   return candidates[0]!;
 })();
+
+function isBuiltUiDir(dir: string): boolean {
+  return existsSync(path.join(dir, 'index.html')) && existsSync(path.join(dir, 'assets'));
+}
 
 import {
   scans,

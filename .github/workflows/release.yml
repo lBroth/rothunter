@@ -82,10 +82,15 @@ jobs:
       - name: Lowercase owner (GHCR requires lowercase repo names)
         id: lower
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: src/docker/Dockerfile
+          # Apple Silicon hosts pulled `:latest` and got an amd64-only
+          # manifest, forcing Rosetta emulation (~3× slower). Build a
+          # multi-arch manifest so ARM hosts get a native image.
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ghcr.io/${{ steps.lower.outputs.owner }}/rothunter:${{ steps.tag.outputs.version }}
