@@ -17,10 +17,18 @@ export interface AppSettings {
    * Number of LLM verdict requests in flight at once. 1 = sequential
    * (original behaviour). 4-8 is a good default on llama.cpp run with
    * `--parallel N -cb` (continuous batching), or on vLLM where dynamic
-   * batching is on by default. Mlx_lm.server serialises internally so
-   * setting >1 there gives little gain and may wedge the server.
+   * batching is on by default.
    */
   llmConcurrency: number;
+  /**
+   * Confidence floor at which a negative LLM verdict routes a finding
+   * to the auto-FP bucket. `0.6` keeps almost every LLM "intentional"
+   * call out of the open list; `0.85` is strict (only very-confident
+   * verdicts auto-FP); `1` effectively disables auto-FP routing. The
+   * Findings UI shows the LLM reason on every routed entry so the
+   * operator can un-mark with one click if a verdict was wrong.
+   */
+  llmAutoFpThreshold: number;
 }
 
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
@@ -33,7 +41,7 @@ function defaultSettings(): AppSettings {
   // llama.cpp throughput and OS responsiveness during a scan.
   const cores = Math.max(1, os.cpus().length);
   const auto = Math.max(1, Math.min(8, Math.floor(cores / 2)));
-  return { detectors, minConfidence: 0.6, llmConcurrency: auto };
+  return { detectors, minConfidence: 0.6, llmConcurrency: auto, llmAutoFpThreshold: 0.6 };
 }
 
 export function readSettings(): AppSettings {
@@ -48,6 +56,12 @@ export function readSettings(): AppSettings {
         typeof raw.llmConcurrency === 'number' && raw.llmConcurrency >= 1
           ? Math.min(16, Math.floor(raw.llmConcurrency))
           : base.llmConcurrency,
+      llmAutoFpThreshold:
+        typeof raw.llmAutoFpThreshold === 'number' &&
+        raw.llmAutoFpThreshold >= 0 &&
+        raw.llmAutoFpThreshold <= 1
+          ? raw.llmAutoFpThreshold
+          : base.llmAutoFpThreshold,
     };
   } catch {
     return defaultSettings();

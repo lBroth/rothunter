@@ -38,7 +38,7 @@ export const ScanVerdictSchema = z.object({
 export const ScanSseEventSchema = z.object({
   scanId: z.string(),
   ts: z.number(),
-  state: z.enum(['queued', 'parsing', 'detecting', 'llm-start', 'llm-verdict', 'snooze', 'done', 'error']),
+  state: z.enum(['queued', 'parsing', 'detecting', 'llm-start', 'llm-verdict', 'done', 'error']),
   files: z.number().optional(),
   symbols: z.number().optional(),
   detector: z.string().optional(),
@@ -145,6 +145,15 @@ export interface ScanRecord {
    */
   falsePositives?: Finding[];
   symbolsCount?: number;
+  /** File count observed during parsing — used to seed the live dashboard on reconnect (the parsing event itself is one-shot and would be missed by a late subscriber otherwise). */
+  filesCount?: number;
+  /** Detectors that have completed during the run. Lets the live dashboard repaint the pipeline progress after a reload mid-scan. */
+  doneDetectors?: string[];
+  /** Currently running detector. Used together with `doneDetectors` to keep the pipeline view accurate on reconnect. */
+  activeDetector?: string;
+  /** Latest LLM verdict progress — replayed to late subscribers so the counter doesn't reset to 0 on reload. */
+  llmDone?: number;
+  llmTotal?: number;
   /** Aggregate LLM telemetry, filled at persist time. Older scans on disk lack this — callers should treat it as optional. */
   llmStats?: LlmStats;
   error?: string;
@@ -259,21 +268,51 @@ export function applyProgressToRecord(record: ScanRecord, event: ScanProgressEve
   switch (event.state) {
     case 'parsing':
       record.state = 'parsing';
-      if (event.files != null) sse.files = event.files;
-      if (event.symbols != null) sse.symbols = event.symbols;
+      if (event.files != null) {
+        sse.files = event.files;
+        record.filesCount = event.files;
+      }
+      if (event.symbols != null) {
+        sse.symbols = event.symbols;
+        record.symbolsCount = event.symbols;
+      }
       break;
     case 'detecting':
       record.state = 'detecting';
       sse.detector = event.detector;
+      // Track which detectors have entered + completed so a late
+      // subscriber (reload mid-scan) can repaint the pipeline progress.
+      // The previously-active detector is the one that just finished;
+      // record both.
+      if (record.activeDetector && record.activeDetector !== event.detector) {
+        const done = record.doneDetectors ?? [];
+        if (!done.includes(record.activeDetector)) {
+          record.doneDetectors = [...done, record.activeDetector];
+        }
+      }
+      record.activeDetector = event.detector;
       break;
     case 'llm-start':
       record.state = 'llm-start';
       sse.llmTotal = event.total;
+      record.llmTotal = event.total;
+      record.llmDone = 0;
+      // Entering the LLM pass means every detector finished — move the
+      // last active detector into the done list.
+      if (record.activeDetector) {
+        const done = record.doneDetectors ?? [];
+        if (!done.includes(record.activeDetector)) {
+          record.doneDetectors = [...done, record.activeDetector];
+        }
+        record.activeDetector = undefined;
+      }
       break;
     case 'llm-verdict':
       record.state = 'llm-verdict';
       sse.llmDone = event.done;
       sse.llmTotal = event.total;
+      record.llmDone = event.done;
+      record.llmTotal = event.total;
       sse.verdict = {
         detectorId: event.detectorId,
         race: event.race,
@@ -283,9 +322,6 @@ export function applyProgressToRecord(record: ScanRecord, event: ScanProgressEve
         cluster: event.cluster,
       };
       record.verdictLog.push(sse.verdict);
-      break;
-    case 'snooze':
-      record.state = 'snooze';
       break;
     case 'done':
       record.state = 'done';

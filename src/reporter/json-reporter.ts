@@ -6,8 +6,6 @@ export interface JsonReportInput {
   durationMs: number;
   symbolCount: number;
   findings: Finding[];
-  /** Findings filtered out by `.rothunterignore`. */
-  snoozed?: Finding[];
   /** Min-confidence threshold used by this run. */
   minConfidence: number;
 }
@@ -20,7 +18,6 @@ export function renderJsonReport(input: JsonReportInput): string {
     total: input.findings.length,
     shown: visible.length,
     hidden: hidden.length,
-    snoozed: input.snoozed?.length ?? 0,
     bySeverity: countBy(visible, (f) => f.severity),
   };
 

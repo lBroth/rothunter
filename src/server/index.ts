@@ -6,7 +6,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import { existsSync, statSync } from 'node:fs';
 import { RotHunter } from '../rothunter.js';
-import { createDefaultLlmClient } from '../adapters/mlx-llm.js';
+import { createDefaultLlmClient } from '../adapters/llm.js';
 import { TypeScriptParser, type ParseResult } from '../parsers/typescript-parser.js';
 import { logger } from '../utils/logger.js';
 import type { Finding } from '../types.js';
@@ -26,7 +26,10 @@ import {
   readFalsePositives,
   writeFalsePositives,
   splitFalsePositives,
+  readKeptOpen,
+  writeKeptOpen,
 } from './false-positives.js';
+import { readMarkedToFix, writeMarkedToFix } from './marked-to-fix.js';
 
 const PORT = Number(process.env.ROTHUNTER_PORT ?? 3000);
 // Loopback by default — `npm run server` on the host should not expose the
@@ -109,12 +112,19 @@ function invalidateParseCache(): void {
   parseCache = null;
 }
 
+// Per-scan abort controllers. Populated when a scan promotes to running,
+// flipped by the cancel endpoint, removed on scan completion. Replaces
+// the old "throw inside onProgress" cancellation channel (which emit()
+// swallowed, so cancels were ignored by the LLM worker pool).
+const abortControllers = new Map<string, AbortController>();
+
 async function startScan(opts: {
   workspaceRoot: string;
   detectorsAllow?: string[];
   detectorsDeny?: string[];
   minConfidence?: number;
   llmConcurrency?: number;
+  llmAutoFpThreshold?: number;
 }): Promise<string> {
   const scanId = `scan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   const record: ScanRecord = {
@@ -147,6 +157,13 @@ async function startScan(opts: {
       return;
     }
     invalidateParseCache(); // fresh scan = fresh parse
+    // Cooperative abort signal — wired through `RotHunter.run` so the
+    // LLM worker pool tears itself down promptly on cancel. The old
+    // implementation tried to throw inside onProgress, but emit()'s
+    // catch swallowed the throw and the workers kept running.
+    const abortController = new AbortController();
+    if (cancelledScans.has(scanId)) abortController.abort();
+    abortControllers.set(scanId, abortController);
     try {
       const rothunter = new RotHunter();
       const result = await rothunter.run({
@@ -154,11 +171,9 @@ async function startScan(opts: {
         detectorsAllow: opts.detectorsAllow ? new Set(opts.detectorsAllow) : undefined,
         detectorsDeny: opts.detectorsDeny ? new Set(opts.detectorsDeny) : undefined,
         llmConcurrency: opts.llmConcurrency,
+        llmAutoFpThreshold: opts.llmAutoFpThreshold,
+        abortSignal: abortController.signal,
         onProgress: (event) => {
-          // The cancel endpoint sets a flag on this scanId. Throwing
-          // inside the progress callback unwinds the LLM pass on the
-          // next emit; the outer catch arm marks the scan errored.
-          if (cancelledScans.has(scanId)) throw new Error('cancelled by user');
           const sse = applyProgressToRecord(record, event);
           broadcast(scanId, sse);
         },
@@ -166,7 +181,8 @@ async function startScan(opts: {
       record.state = 'done';
       record.finishedAt = Date.now();
       const fpSet = readFalsePositives(opts.workspaceRoot);
-      const split = splitFalsePositives(result.findings, fpSet);
+      const keptOpenSet = readKeptOpen(opts.workspaceRoot);
+      const split = splitFalsePositives(result.findings, fpSet, keptOpenSet);
       record.findings = split.findings;
       record.falsePositives = split.falsePositives;
       record.symbolsCount = result.symbols.length;
@@ -180,6 +196,7 @@ async function startScan(opts: {
       logger.error({ scanId, err }, 'RotHunter scan failed');
     } finally {
       releaseScanSlot();
+      abortControllers.delete(scanId);
       // Drain SSE client set for this scan — listeners auto-prune on close
       // (line ~895) but the outer Map entry survives. Force the cleanup so
       // long-running servers don't accumulate empty Sets keyed by completed
@@ -311,6 +328,7 @@ app.post<{ Body: { detectors?: string[]; minConfidence?: number } }>('/api/scans
     detectorsAllow: body.detectors ?? allowFromSettings,
     minConfidence: body.minConfidence ?? SETTINGS.minConfidence,
     llmConcurrency: SETTINGS.llmConcurrency,
+    llmAutoFpThreshold: SETTINGS.llmAutoFpThreshold,
   });
   return { scanId, queuePosition: getScanQueueLength() };
 });
@@ -336,6 +354,7 @@ function settingsPayload() {
     detectors: SETTINGS.detectors,
     minConfidence: SETTINGS.minConfidence,
     llmConcurrency: SETTINGS.llmConcurrency,
+    llmAutoFpThreshold: SETTINGS.llmAutoFpThreshold,
     hardware: {
       cpuCores: os.cpus().length,
       totalMemMb: Math.round(os.totalmem() / (1024 * 1024)),
@@ -352,7 +371,12 @@ function settingsPayload() {
 app.get('/api/settings', async () => settingsPayload());
 
 app.post<{
-  Body: { detectors?: Record<string, boolean>; minConfidence?: number; llmConcurrency?: number };
+  Body: {
+    detectors?: Record<string, boolean>;
+    minConfidence?: number;
+    llmConcurrency?: number;
+    llmAutoFpThreshold?: number;
+  };
 }>('/api/settings', async (req, reply) => {
   const body = req.body ?? {};
   if (body.minConfidence != null) {
@@ -366,6 +390,16 @@ app.post<{
       return reply.code(400).send({ error: 'llmConcurrency must be in [1, 16]' });
     }
     SETTINGS.llmConcurrency = Math.floor(body.llmConcurrency);
+  }
+  if (body.llmAutoFpThreshold != null) {
+    if (
+      typeof body.llmAutoFpThreshold !== 'number' ||
+      body.llmAutoFpThreshold < 0 ||
+      body.llmAutoFpThreshold > 1
+    ) {
+      return reply.code(400).send({ error: 'llmAutoFpThreshold must be in [0, 1]' });
+    }
+    SETTINGS.llmAutoFpThreshold = body.llmAutoFpThreshold;
   }
   if (body.detectors) {
     for (const [id, on] of Object.entries(body.detectors)) {
@@ -434,7 +468,22 @@ Hard rules for the prompt you produce:
    - Keep the change MINIMAL — touch only what the defect requires.
    - Match existing project conventions (imports, formatting, error handling).
    - Add or update unit tests when the file already has a sibling test; otherwise note why tests are not added.
-6. End with: "Apply the fix directly to the files listed above. If the right fix would require a larger refactor than the constraints allow, STOP and explain in plain text instead of editing — do not patch around the constraints."
+6. Include a "## Suppression — if AND ONLY IF this is intentional" section. The default path is to FIX the finding. When the agent is CONFIDENT the finding is intentional design (framework idiom, deliberate pattern, detector heuristic false positive) AND not a real defect, the agent has two options:
+
+   (a) **Add a rothunter pragma directly in source** — preferred when the suppression should live with the code (signals intent to future readers + survives every rescan). Place TWO lines IMMEDIATELY above the flagged line:
+
+   \`\`\`
+   // rothunter:ignore-<detectorId>
+   // reason: <one short sentence explaining why this is intentional>
+   \`\`\`
+
+   Both lines required. Replace \`<detectorId>\` with the literal detector id from the finding (e.g. \`silent-catch\`, \`mutation\`, \`race-condition\`, \`magic-numbers\`, \`console-log-prod\`, \`mutable-globals\`, \`dead-export\`, \`long-function\`).
+
+   (b) **STOP and ask the operator to confirm**, including a one-paragraph rationale. The operator can then click "Mark false positive" in the dashboard if they agree — rothunter persists that decision so the finding stops surfacing on future scans.
+
+   NEVER use either path to silence a real bug. The pragma is permanent; the dashboard mark is shared with the team. When in doubt, prefer (b).
+
+7. End with: "Apply the fix directly to the files listed above. If the right fix would require a larger refactor than the constraints allow, STOP and explain in plain text instead of editing — do not patch around the constraints."
 
 Output ONLY the prompt body. No preamble. No markdown fence around the whole thing. Use Markdown section headings inside the body.`;
 
@@ -497,7 +546,7 @@ app.get('/api/llm/health', async (_, reply) => {
  *     verdict after the LLM pass).
  *
  * Cross-file detectors (duplicate-type, dead-export, dead-api,
- * dead-module, similar-functions, unused-deps, same-name-evolution,
+ * dead-module, similar-functions, unused-deps,
  * hot-hub-file, todo-comments) are technically less accurate when run
  * on a subset — they rely on whole-workspace state to declare a symbol
  * unused, a type a duplicate, an import unreferenced, etc. The endpoint
@@ -542,10 +591,7 @@ app.post<{ Params: { fp: string } }>('/api/findings/:fp/rerun', async (req, repl
     return reply.code(422).send({ status: 'unsupported', reason: 'finding has no file evidence to re-check' });
   }
 
-  // Re-run just this detector against just the evidence files. The
-  // engine's `ignoreSnoozeFile` keeps suppressed fingerprints OUT of the
-  // result so a previously-snoozed copy of the same finding doesn't
-  // mask the deterministic re-evaluation.
+  // Re-run just this detector against just the evidence files.
   const rothunter = new RotHunter();
   let result;
   try {
@@ -553,7 +599,6 @@ app.post<{ Params: { fp: string } }>('/api/findings/:fp/rerun', async (req, repl
       workspaceRoot: owningScan.workspaceRoot,
       files: filesFromEvidence,
       detectorsAllow: new Set([finding.detectorId]),
-      ignoreSnoozeFile: true,
       llmConcurrency: SETTINGS.llmConcurrency,
     });
   } catch (err) {
@@ -595,23 +640,59 @@ app.post<{ Params: { fp: string } }>('/api/findings/:fp/rerun', async (req, repl
 });
 
 app.get('/api/scans', async () => {
-  const history = await loadScanHistory(getWorkspaceRoot());
-  // Live scans (still in-memory) merged in front.
-  const live = [...scans.values()].filter((s) => s.state !== 'done' && s.state !== 'error');
-  return { scans: [...live, ...history.slice(0, 50)] };
+  const ws = getWorkspaceRoot();
+  const history = await loadScanHistory(ws);
+  // Live scans (still in-memory) merged in front. Filter to the active
+  // workspace — without this, scans launched against a different
+  // workspace bleed into the current listing after a switch and
+  // confuse the dashboard / live banner.
+  const live = [...scans.values()].filter(
+    (s) => s.workspaceRoot === ws && s.state !== 'done' && s.state !== 'error',
+  );
+  // Disk-loaded history is partitioned at scan-completion time. Re-apply
+  // the current FP + kept-open overrides so unmark FP clicks made AFTER
+  // a scan stay visible across page reloads.
+  const repartitionedHistory = history.slice(0, 50).map((s) => repartitionScanRecord(s, ws));
+  return { scans: [...live, ...repartitionedHistory] };
 });
 
 app.get<{ Params: { scanId: string } }>('/api/scans/:scanId', async (req, reply) => {
+  const ws = getWorkspaceRoot();
   const live = scans.get(req.params.scanId);
-  if (live) return live;
-  // Disk lookup
-  const dir = path.join(getWorkspaceRoot(), '.rothunter', 'scans');
+  // Workspace-scope the lookup. The in-memory `scans` Map is global,
+  // so without this guard a scan started against workspace A would
+  // still be reachable by id from workspace B (the picker reload
+  // doesn't kill the server-side state). The disk path is already
+  // scoped because `dir` is built from getWorkspaceRoot().
+  if (live && live.workspaceRoot === ws) return live;
+  const dir = path.join(ws, '.rothunter', 'scans');
   const file = path.join(dir, `${req.params.scanId}.json`);
   if (!existsSync(file)) {
     return reply.code(404).send({ error: 'scan not found' });
   }
-  return JSON.parse(await fs.readFile(file, 'utf-8'));
+  const record = JSON.parse(await fs.readFile(file, 'utf-8')) as ScanRecord;
+  // Re-apply the partition against the CURRENT FP + kept-open stores.
+  // The persisted JSON only reflects the split at scan-completion time;
+  // mark / unmark FP after the fact must be visible on a page reload
+  // even though the disk copy is stale. The persisted file stays
+  // immutable — repartition is a read-time concern.
+  return repartitionScanRecord(record, ws);
 });
+
+/**
+ * Apply the workspace's current FP + kept-open overrides to a scan
+ * record loaded from disk. Pure — never writes back, so the operator's
+ * "snapshot at scan time" record stays auditable while the displayed
+ * partition follows the latest user / LLM decisions.
+ */
+function repartitionScanRecord(record: ScanRecord, ws: string): ScanRecord {
+  if (!record.findings && !record.falsePositives) return record;
+  const fpSet = readFalsePositives(ws);
+  const keptOpen = readKeptOpen(ws);
+  const all = [...(record.findings ?? []), ...(record.falsePositives ?? [])];
+  const split = splitFalsePositives(all, fpSet, keptOpen);
+  return { ...record, findings: split.findings, falsePositives: split.falsePositives };
+}
 
 /**
  * GET /api/scans/:scanId/llm-stats — aggregate LLM telemetry.
@@ -688,6 +769,15 @@ app.get<{ Params: { scanId: string }; Querystring: { vs?: string } }>(
 
 app.get<{ Params: { scanId: string } }>('/api/scans/:scanId/stream', (req, reply) => {
   const { scanId } = req.params;
+  // Refuse to stream a scan that belongs to a different workspace.
+  // Without this the LiveScanBanner on workspace B could subscribe to
+  // a scan still running against workspace A (the scanId is reachable
+  // from anywhere) and the operator would see ghost progress events.
+  const ws = getWorkspaceRoot();
+  const current = scans.get(scanId);
+  if (current && current.workspaceRoot !== ws) {
+    return reply.code(404).send({ error: 'scan belongs to a different workspace' });
+  }
   reply.raw.setHeader('Content-Type', 'text/event-stream');
   reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
   reply.raw.setHeader('Connection', 'keep-alive');
@@ -696,12 +786,51 @@ app.get<{ Params: { scanId: string } }>('/api/scans/:scanId/stream', (req, reply
   const set = sseClients.get(scanId) ?? new Set();
   set.add(reply.raw);
   sseClients.set(scanId, set);
-  // Replay current state + verdict log so a late subscriber sees the full
-  // pipeline without having to query the snapshot endpoint separately.
-  const current = scans.get(scanId);
+  // Replay accumulated scan state so a late subscriber (reload mid-scan)
+  // sees the full pipeline without having to query the snapshot endpoint
+  // separately. We replay:
+  //   1. A synthetic parsing event carrying files/symbols counts.
+  //   2. One detecting event per completed detector, then the active one.
+  //   3. A snapshot of LLM progress (done / total).
+  //   4. The verdict log so the verdict-stream panel repopulates.
+  //   5. The latest progress event (state machine).
   if (current) {
-    const snapshot: ScanSseEvent = current.progress ?? { scanId, ts: Date.now(), state: current.state };
-    reply.raw.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+    if (current.filesCount != null || current.symbolsCount != null) {
+      reply.raw.write(
+        `data: ${JSON.stringify({
+          scanId,
+          ts: Date.now(),
+          state: 'parsing',
+          files: current.filesCount,
+          symbols: current.symbolsCount,
+        })}\n\n`,
+      );
+    }
+    for (const det of current.doneDetectors ?? []) {
+      reply.raw.write(
+        `data: ${JSON.stringify({ scanId, ts: Date.now(), state: 'detecting', detector: det })}\n\n`,
+      );
+    }
+    if (current.activeDetector) {
+      reply.raw.write(
+        `data: ${JSON.stringify({
+          scanId,
+          ts: Date.now(),
+          state: 'detecting',
+          detector: current.activeDetector,
+        })}\n\n`,
+      );
+    }
+    if (current.llmTotal != null) {
+      reply.raw.write(
+        `data: ${JSON.stringify({
+          scanId,
+          ts: Date.now(),
+          state: 'llm-start',
+          llmTotal: current.llmTotal,
+        })}\n\n`,
+      );
+    }
     for (const v of current.verdictLog) {
       const replay: ScanSseEvent = {
         scanId,
@@ -711,6 +840,10 @@ app.get<{ Params: { scanId: string } }>('/api/scans/:scanId/stream', (req, reply
       };
       reply.raw.write(`data: ${JSON.stringify(replay)}\n\n`);
     }
+    // Final state snapshot last so the UI's state machine lands on the
+    // current phase after consuming all the historical events above.
+    const snapshot: ScanSseEvent = current.progress ?? { scanId, ts: Date.now(), state: current.state };
+    reply.raw.write(`data: ${JSON.stringify(snapshot)}\n\n`);
   }
 
   req.raw.on('close', () => {
@@ -819,6 +952,10 @@ app.post<{ Params: { scanId: string } }>('/api/scans/:scanId/cancel', async (req
     return { ok: true, already: record.state };
   }
   cancelledScans.add(scanId);
+  // Fire the abort signal — the LLM worker pool inside RotHunter checks
+  // it between verdicts and bails out, freeing the scan slot promptly
+  // so the queued next scan can run.
+  abortControllers.get(scanId)?.abort();
   record.state = 'error';
   record.error = 'cancelled by user';
   record.finishedAt = Date.now();
@@ -863,40 +1000,322 @@ app.delete<{ Params: { scanId: string } }>('/api/scans/:scanId', async (req, rep
  */
 app.post<{ Params: { fp: string } }>('/api/findings/:fp/false-positive', async (req) => {
   const fp = decodeURIComponent(req.params.fp);
-  const set = readFalsePositives(getWorkspaceRoot());
-  set.add(fp);
-  await writeFalsePositives(getWorkspaceRoot(), set);
-  // Apply retroactively to every in-memory scan so the UI updates
-  // immediately without waiting for the next scan.
-  for (const s of scans.values()) {
-    if (!s.findings && !s.falsePositives) continue;
-    const all = [...(s.findings ?? []), ...(s.falsePositives ?? [])];
-    const split = splitFalsePositives(all, set);
-    s.findings = split.findings;
-    s.falsePositives = split.falsePositives;
-  }
-  return { ok: true, count: set.size };
+  // Mark FP: add to FP store AND remove from kept-open store (user is
+  // now saying "yes, this IS an FP" — overrides any prior un-FP they
+  // may have set).
+  await mutateKeptOpen((s) => s.delete(fp));
+  return mutateFalsePositives((s) => s.add(fp));
 });
 
 app.delete<{ Params: { fp: string } }>('/api/findings/:fp/false-positive', async (req) => {
   const fp = decodeURIComponent(req.params.fp);
-  const set = readFalsePositives(getWorkspaceRoot());
-  set.delete(fp);
-  await writeFalsePositives(getWorkspaceRoot(), set);
-  for (const s of scans.values()) {
-    if (!s.findings && !s.falsePositives) continue;
-    const all = [...(s.findings ?? []), ...(s.falsePositives ?? [])];
-    const split = splitFalsePositives(all, set);
-    s.findings = split.findings;
-    s.falsePositives = split.falsePositives;
-  }
-  return { ok: true, count: set.size };
+  // Unmark FP: remove from FP store AND record the explicit "keep open"
+  // override so the LLM auto-FP path (per-scan) cannot route this back
+  // into the FP bucket. Without the second step a user-unmarked finding
+  // bounces straight back to FP on the next scan when the LLM re-runs.
+  await mutateFalsePositives((s) => s.delete(fp));
+  return mutateKeptOpen((s) => s.add(fp));
+});
+
+/**
+ * Batch mark / unmark as false-positive. Same shape + same race
+ * mitigation as `/api/marked-to-fix/batch` — N parallel POSTs would
+ * stomp each other's JSON file write; one batched request + one
+ * critical section keeps the store consistent.
+ *
+ * Add ⇒ FP store gets the fingerprint, kept-open store loses it.
+ * Remove ⇒ FP store loses the fingerprint, kept-open store gets it.
+ * That two-store dance is what makes the UI's Unmark button stick.
+ */
+app.post<{ Body: { add?: string[]; remove?: string[] } }>('/api/false-positives/batch', async (req) => {
+  const body = req.body ?? {};
+  const add = body.add ?? [];
+  const remove = body.remove ?? [];
+  await mutateKeptOpen((s) => {
+    for (const fp of add) s.delete(fp);
+    for (const fp of remove) s.add(fp);
+  });
+  return mutateFalsePositives((s) => {
+    for (const fp of add) s.add(fp);
+    for (const fp of remove) s.delete(fp);
+  });
 });
 
 app.get('/api/false-positives', async () => {
   const set = readFalsePositives(getWorkspaceRoot());
   return { fingerprints: [...set].sort() };
 });
+
+/**
+ * Serialise read-modify-write on the false-positive store. The
+ * promise chain queues every incoming request behind the previous —
+ * Node is single-threaded so the chain itself is race-free; the queue
+ * just prevents one request's read from interleaving with another
+ * request's write. Mirrors `mutateMarkedToFix`.
+ *
+ * The retroactive in-memory split keeps every running scan record
+ * partitioned correctly so the Findings UI updates without a rescan.
+ */
+let falsePositiveMutation: Promise<unknown> = Promise.resolve();
+async function mutateFalsePositives(
+  mutate: (s: Set<string>) => void,
+): Promise<{ ok: true; count: number }> {
+  const next = falsePositiveMutation.then(async () => {
+    const ws = getWorkspaceRoot();
+    const set = readFalsePositives(ws);
+    mutate(set);
+    await writeFalsePositives(ws, set);
+    await reapplySplitToScans(ws);
+    return { ok: true as const, count: set.size };
+  });
+  falsePositiveMutation = next.catch(() => undefined);
+  return next;
+}
+
+/**
+ * Mirror of `mutateFalsePositives` for the kept-open override store.
+ * Same serialisation pattern + same retroactive split so the UI sees
+ * the unmark immediately on every in-memory scan record.
+ */
+let keptOpenMutation: Promise<unknown> = Promise.resolve();
+async function mutateKeptOpen(
+  mutate: (s: Set<string>) => void,
+): Promise<{ ok: true; count: number }> {
+  const next = keptOpenMutation.then(async () => {
+    const ws = getWorkspaceRoot();
+    const set = readKeptOpen(ws);
+    mutate(set);
+    await writeKeptOpen(ws, set);
+    await reapplySplitToScans(ws);
+    return { ok: true as const, count: set.size };
+  });
+  keptOpenMutation = next.catch(() => undefined);
+  return next;
+}
+
+/**
+ * Re-split every in-memory scan against the CURRENT FP + kept-open
+ * stores. Called by both mutators so a single click triggers exactly
+ * one re-partition — the two mutators chain through their own queues
+ * but converge on this helper.
+ */
+async function reapplySplitToScans(ws: string): Promise<void> {
+  const fpSet = readFalsePositives(ws);
+  const keptOpen = readKeptOpen(ws);
+  for (const s of scans.values()) {
+    if (!s.findings && !s.falsePositives) continue;
+    const all = [...(s.findings ?? []), ...(s.falsePositives ?? [])];
+    const split = splitFalsePositives(all, fpSet, keptOpen);
+    s.findings = split.findings;
+    s.falsePositives = split.falsePositives;
+  }
+}
+
+/**
+ * Marked-to-fix queue. Operator picks findings from the detail page;
+ * the dashboard can then ask the LLM to compose a single combined
+ * prompt for the whole queue — useful for fixing a batch in one
+ * paste into Claude Code / Cursor instead of repeating the
+ * generate-prompt flow per finding.
+ *
+ * POST   /api/findings/:fp/mark-to-fix    — add fingerprint
+ * DELETE /api/findings/:fp/mark-to-fix    — remove fingerprint
+ * GET    /api/marked-to-fix               — list fingerprints + matching findings
+ * POST   /api/marked-to-fix/prompt        — deterministically-built combined prompt
+ */
+app.post<{ Params: { fp: string } }>('/api/findings/:fp/mark-to-fix', async (req) => {
+  const fp = decodeURIComponent(req.params.fp);
+  return mutateMarkedToFix((s) => s.add(fp));
+});
+
+app.delete<{ Params: { fp: string } }>('/api/findings/:fp/mark-to-fix', async (req) => {
+  const fp = decodeURIComponent(req.params.fp);
+  return mutateMarkedToFix((s) => s.delete(fp));
+});
+
+/**
+ * Batch mark / unmark. Bulk-select on the Findings page previously
+ * fired N parallel POSTs, each doing a read-modify-write on the same
+ * JSON file. Concurrent writes raced + only the last write survived
+ * (operator marked 88 findings, file ended with 11). This endpoint
+ * mutates the set in one critical section.
+ */
+app.post<{ Body: { add?: string[]; remove?: string[] } }>('/api/marked-to-fix/batch', async (req) => {
+  const body = req.body ?? {};
+  return mutateMarkedToFix((s) => {
+    for (const fp of body.add ?? []) s.add(fp);
+    for (const fp of body.remove ?? []) s.delete(fp);
+  });
+});
+
+// Serialise read-modify-write on the marked-to-fix store. The
+// `mutationQueue` chains every incoming request behind the previous
+// one — Node is single-threaded so the chain itself is race-free; the
+// queue just keeps an in-flight write from being interleaved with the
+// next request's read.
+let markedToFixMutation: Promise<unknown> = Promise.resolve();
+async function mutateMarkedToFix(
+  mutate: (s: Set<string>) => void,
+): Promise<{ ok: true; count: number }> {
+  const next = markedToFixMutation.then(async () => {
+    const ws = getWorkspaceRoot();
+    const set = readMarkedToFix(ws);
+    mutate(set);
+    await writeMarkedToFix(ws, set);
+    return { ok: true as const, count: set.size };
+  });
+  markedToFixMutation = next.catch(() => undefined);
+  return next;
+}
+
+app.get('/api/marked-to-fix', async () => {
+  const ws = getWorkspaceRoot();
+  const set = readMarkedToFix(ws);
+  // Resolve fingerprints to findings via live scans + disk history so
+  // the dashboard can render titles + file paths without round-tripping
+  // per-finding through `/api/findings/:fp`.
+  const seen = new Map<string, Finding>();
+  for (const s of scans.values()) {
+    if (s.workspaceRoot !== ws || !s.findings) continue;
+    for (const f of s.findings) if (set.has(f.fingerprint) && !seen.has(f.fingerprint)) seen.set(f.fingerprint, f);
+  }
+  if (seen.size < set.size) {
+    const hist = await loadScanHistory(ws);
+    for (const s of hist) {
+      for (const f of s.findings ?? []) {
+        if (set.has(f.fingerprint) && !seen.has(f.fingerprint)) seen.set(f.fingerprint, f);
+      }
+      if (seen.size >= set.size) break;
+    }
+  }
+  return {
+    fingerprints: [...set].sort(),
+    findings: [...seen.values()],
+  };
+});
+
+app.post('/api/marked-to-fix/prompt', async (_req, reply) => {
+  const ws = getWorkspaceRoot();
+  const set = readMarkedToFix(ws);
+  if (set.size === 0) {
+    return reply.code(400).send({ error: 'no findings marked to fix' });
+  }
+  // Same finding-resolution dance as the GET endpoint — pull live first
+  // then disk history.
+  const findings: Finding[] = [];
+  const seenFp = new Set<string>();
+  for (const s of scans.values()) {
+    if (s.workspaceRoot !== ws || !s.findings) continue;
+    for (const f of s.findings) {
+      if (set.has(f.fingerprint) && !seenFp.has(f.fingerprint)) {
+        findings.push(f);
+        seenFp.add(f.fingerprint);
+      }
+    }
+  }
+  if (findings.length < set.size) {
+    const hist = await loadScanHistory(ws);
+    for (const s of hist) {
+      for (const f of s.findings ?? []) {
+        if (set.has(f.fingerprint) && !seenFp.has(f.fingerprint)) {
+          findings.push(f);
+          seenFp.add(f.fingerprint);
+        }
+      }
+      if (findings.length >= set.size) break;
+    }
+  }
+  if (findings.length === 0) {
+    return reply.code(404).send({ error: 'marked fingerprints have no matching findings on record' });
+  }
+
+  const prompt = renderCombinedFixPrompt(findings);
+  return { prompt, findingCount: findings.length };
+});
+
+/**
+ * Build the combined fix prompt deterministically — no LLM call.
+ *
+ * Why no LLM: every section that was previously asked of the model
+ * was either fixed boilerplate (#1, #4–#7) or a direct render of the
+ * finding data (#2, #3). The LLM was contributing zero synthesis and
+ * routinely overflowed the 8 K context window (50+ findings produced
+ * 18 K-token prompts). Rendering in JS is faster, deterministic, and
+ * has no token budget.
+ */
+function renderCombinedFixPrompt(findings: Finding[]): string {
+  const sevCount = { high: 0, medium: 0, low: 0 } as Record<string, number>;
+  for (const f of findings) sevCount[f.severity] = (sevCount[f.severity] ?? 0) + 1;
+  const sevMix = (['high', 'medium', 'low'] as const)
+    .filter((s) => (sevCount[s] ?? 0) > 0)
+    .map((s) => `${sevCount[s]} ${s}`)
+    .join(', ');
+
+  const uniqueFiles = Array.from(
+    new Set(findings.flatMap((f) => f.evidence.map((e) => e.file))),
+  ).sort();
+  const filesBullets = uniqueFiles.map((p) => `- \`${p}\``).join('\n');
+
+  const findingBlocks = findings
+    .map((f, i) => {
+      const primary = f.evidence[0];
+      const loc = primary
+        ? `\`${primary.file}:${primary.range.startLine}-${primary.range.endLine}\``
+        : '(no evidence)';
+      const evidence = f.evidence
+        .map(
+          (e) =>
+            `\`${e.file}:${e.range.startLine}-${e.range.endLine}\`\n\`\`\`\n${e.snippet}\n\`\`\``,
+        )
+        .join('\n\n');
+      return `### ${i + 1}. ${f.detectorId} · ${f.severity} · ${loc}
+**Title:** ${f.title}
+
+${f.description}
+
+**Suggested direction:** ${f.suggestion ?? '(none)'}
+
+${evidence}`;
+    })
+    .join('\n\n');
+
+  return `Fix the following ${findings.length} static-analysis finding${findings.length === 1 ? '' : 's'} surfaced by rothunter (${sevMix}).
+
+## Files to inspect
+${filesBullets}
+
+## Findings
+${findingBlocks}
+
+## Required behaviour
+Each fix must remove the root cause of its finding while preserving the file's existing public contract and tests. The end state: every finding above no longer reproduces, the surrounding code still reads idiomatically for this project, and no new lint / type errors appear.
+
+## Constraints
+- Fix the ROOT CAUSE for each finding — no try/catch swallowing, no \`@ts-ignore\` / \`any\` casts, no commented-out code.
+- Do NOT add backwards-compatibility shims, feature flags, or "TODO later" stubs.
+- Do NOT widen types, suppress lint rules, or skip tests to make errors disappear.
+- Keep each change MINIMAL — touch only what its defect requires.
+- Match existing project conventions (imports, formatting, error handling).
+- Add or update unit tests when the file already has a sibling test.
+
+## Suppression — if AND ONLY IF intentional, per-finding
+Default path is to FIX. For any finding you are CONFIDENT is intentional design (framework idiom, deliberate pattern, detector heuristic false positive) AND not a real defect, you have two options:
+
+**(a) Add a rothunter pragma directly in source** — preferred when the suppression should live with the code (signals intent to future readers + survives every rescan). Place TWO lines IMMEDIATELY above the flagged line:
+
+\`\`\`
+// rothunter:ignore-<detectorId>
+// reason: <one short sentence explaining why this is intentional>
+\`\`\`
+
+Both lines required. Replace \`<detectorId>\` with the literal detector id from the finding (e.g. \`silent-catch\`, \`mutation\`, \`race-condition\`, \`magic-numbers\`, \`console-log-prod\`, \`mutable-globals\`, \`dead-export\`, \`long-function\`).
+
+**(b) STOP at that finding and ask the operator to confirm**, with a one-paragraph rationale. The operator can then click "Mark false positive" in the dashboard if they agree — rothunter persists that decision so the finding stops surfacing on future scans.
+
+NEVER use either path to silence a real bug. The pragma is permanent; the dashboard mark is shared with the team. When in doubt, prefer (b).
+
+Apply the fixes directly to the files listed above. Work through the findings in the order given. If any fix would require a larger refactor than the constraints allow, STOP at that finding and explain in plain text instead of editing.`;
+}
 
 // GET /api/code-window?file&line&end?&context? — CodeWindow with `context`
 // lines of padding for non-primary evidence locations.
