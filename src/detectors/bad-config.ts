@@ -1,14 +1,12 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { readdirSync, statSync } from 'node:fs';
 import type { Finding } from '../types.js';
+import { stableHash } from '../utils/hash.js';
+import { escapeForRegex } from '../utils/regex.js';
+import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
-export interface BadConfigDetectorInput {
-  workspaceRoot: string;
-  /** Workspace-relative file list — used to discover tsconfig*.json files. */
-  files: ReadonlyArray<string>;
-}
+export interface BadConfigDetectorInput extends FileWalkingDetectorInput {}
 
 // Flags anti-patterns in tsconfig*.json, eslint config, biome.json:
 // disabled strict family, any-permitting rules off, legacy targets.
@@ -31,14 +29,93 @@ export function detectBadConfig(input: BadConfigDetectorInput): Finding[] {
     if (rel.endsWith('.json') || /\/tsconfig.*\.json$/.test(rel) || rel.endsWith('biome.json') || rel.endsWith('biome.jsonc')) {
       const parsed = tryParseJsonc(raw);
       if (!parsed) continue;
-      if (isTsConfig(rel)) findings.push(...analyseTsConfig(rel, raw, parsed));
-      else if (rel.endsWith('biome.json') || rel.endsWith('biome.jsonc')) findings.push(...analyseBiome(rel, raw, parsed));
+      if (isTsConfig(rel)) {
+        // Resolve `extends` chain so inherited strict-family flags
+        // count. Operators commonly put `strict: true` in
+        // `tsconfig.base.json` and leave the leaf tsconfigs minimal;
+        // flagging those leafs as "strict not set" is a false positive.
+        const merged = mergeTsConfigExtends(input.workspaceRoot, rel, parsed);
+        findings.push(...analyseTsConfig(rel, raw, merged));
+      } else if (rel.endsWith('biome.json') || rel.endsWith('biome.jsonc')) findings.push(...analyseBiome(rel, raw, parsed));
       else if (isEslintJson(rel)) findings.push(...analyseEslint(rel, raw, parsed));
     } else if (isEslintScript(rel)) {
       findings.push(...analyseEslintScript(rel, raw));
     }
   }
   return findings;
+}
+
+/**
+ * Walk the tsconfig `extends` chain (relative + bare specifiers),
+ * merging parent `compilerOptions` under the child's. Bounded depth
+ * (8) + a visited set guard against cyclic / pathological inheritance.
+ * The merged object is what the rule checks read — so a leaf tsconfig
+ * that only sets `outDir` no longer trips "strict not set" when its
+ * base has `"strict": true`.
+ */
+function mergeTsConfigExtends(
+  workspaceRoot: string,
+  relConfig: string,
+  raw: unknown,
+  visited = new Set<string>(),
+  depth = 0,
+): unknown {
+  if (depth >= 8) return raw;
+  const root = asObj(raw);
+  if (!root) return raw;
+  const extendsValue = typeof root.extends === 'string' ? root.extends : null;
+  if (!extendsValue) return raw;
+  const configAbs = path.resolve(workspaceRoot, relConfig);
+  if (visited.has(configAbs)) return raw;
+  visited.add(configAbs);
+
+  const configDir = path.dirname(configAbs);
+  const parentAbs = resolveExtends(configDir, extendsValue);
+  if (!parentAbs) return raw;
+
+  let parentRaw: unknown;
+  try {
+    parentRaw = tryParseJsonc(readFileSync(parentAbs, 'utf-8'));
+  } catch {
+    return raw;
+  }
+  if (!parentRaw) return raw;
+
+  const parentMerged = mergeTsConfigExtends(
+    workspaceRoot,
+    path.relative(workspaceRoot, parentAbs),
+    parentRaw,
+    visited,
+    depth + 1,
+  );
+  const parentObj = asObj(parentMerged) ?? {};
+  const parentCompiler = asObj(parentObj.compilerOptions) ?? {};
+  const childCompiler = asObj(root.compilerOptions) ?? {};
+  return {
+    ...parentObj,
+    ...root,
+    compilerOptions: { ...parentCompiler, ...childCompiler },
+  };
+}
+
+function resolveExtends(configDir: string, extendsValue: string): string | null {
+  const tryPaths = (base: string): string | null => {
+    if (existsSync(base)) return base;
+    if (existsSync(`${base}.json`)) return `${base}.json`;
+    return null;
+  };
+  if (extendsValue.startsWith('.') || extendsValue.startsWith('/')) {
+    return tryPaths(path.resolve(configDir, extendsValue));
+  }
+  // Bare specifier — walk node_modules up.
+  let cur = configDir;
+  while (cur !== path.dirname(cur)) {
+    const candidate = path.join(cur, 'node_modules', extendsValue);
+    const hit = tryPaths(candidate);
+    if (hit) return hit;
+    cur = path.dirname(cur);
+  }
+  return null;
 }
 
 function discoverConfigFiles(workspaceRoot: string, files: ReadonlyArray<string>): string[] {
@@ -483,10 +560,4 @@ function findKeyIndex(raw: string, key: string): number {
   return m ? m.index : -1;
 }
 
-function escapeForRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

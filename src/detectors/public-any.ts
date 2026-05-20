@@ -1,5 +1,5 @@
-import * as crypto from 'node:crypto';
 import type { Finding, SymbolRecord, FunctionStructure } from '../types.js';
+import { stableHash } from '../utils/hash.js';
 
 export interface PublicAnyDetectorInput {
   symbols: ReadonlyArray<SymbolRecord>;
@@ -54,6 +54,3 @@ function containsAny(type: string): boolean {
   return /\bany\b/.test(type);
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

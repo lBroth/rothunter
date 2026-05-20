@@ -1,14 +1,10 @@
-import * as crypto from 'node:crypto';
-import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
 import { makeSourceReader } from '../utils/source-reader.js';
+import { stableHash } from '../utils/hash.js';
+import { hasIgnoreAnnotation } from '../utils/ignore-annotation.js';
+import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
-export interface ConsoleLogProdDetectorInput {
-  workspaceRoot: string;
-  files: ReadonlyArray<string>;
-  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
-  project?: Project;
-}
+export interface ConsoleLogProdDetectorInput extends FileWalkingDetectorInput {}
 
 // console.log/.debug/.info in non-test source. warn/error are intentional. LOW.
 export function detectConsoleLogsInProd(input: ConsoleLogProdDetectorInput): Finding[] {
@@ -32,6 +28,7 @@ function analyseFile(file: string, raw: string): Finding[] {
     // Skip if the call is inside a line comment.
     const lineText = lineAt(raw, line);
     if (/^\s*\/\//.test(lineText)) continue;
+    if (hasIgnoreAnnotation(raw, line, 'console-log-prod')) continue;
     out.push({
       detectorId: 'console-log-prod',
       severity: 'low',
@@ -81,6 +78,3 @@ function snippetAround(raw: string, line: number): string {
   return lines.slice(from, to).join('\n');
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

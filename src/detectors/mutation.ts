@@ -1,5 +1,6 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
+import { stableHash } from '../utils/hash.js';
+import { trimSnippet, trimEnclosingSource } from '../utils/snippet.js';
 import {
   Project,
   SyntaxKind,
@@ -10,13 +11,9 @@ import {
   type FunctionExpression,
 } from 'ts-morph';
 import type { Finding, Severity } from '../types.js';
+import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
-export interface MutationDetectorInput {
-  workspaceRoot: string;
-  files: ReadonlyArray<string>;
-  /** Optional pre-built ts-morph Project — saves a parse per file. */
-  project?: Project;
-}
+export interface MutationDetectorInput extends FileWalkingDetectorInput {}
 
 type MutationPattern =
   | 'array-mutator'
@@ -372,10 +369,6 @@ function hasIgnoreAnnotation(node: Node): boolean {
   return text.includes(IGNORE_ANNOTATION);
 }
 
-function trimSnippet(text: string): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim();
-  return collapsed.length > 140 ? collapsed.slice(0, 137) + '...' : collapsed;
-}
 
 function toFinding(c: RawCandidate): Finding {
   // Severity matrix (per ROADMAP):
@@ -444,17 +437,9 @@ function toFinding(c: RawCandidate): Finding {
   };
 }
 
-function stableHash(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
-}
 
 /**
  * Compress the enclosing function source so the LLM prompt stays in budget.
  * We keep the full signature line plus up to ~40 lines of body — enough to
  * judge intent without paying for the model to read a 200-line method.
  */
-function trimEnclosingSource(full: string): string {
-  const lines = full.split(/\r?\n/);
-  if (lines.length <= 42) return full;
-  return [...lines.slice(0, 40), '  // ...', lines[lines.length - 1] ?? ''].join('\n');
-}

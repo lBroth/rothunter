@@ -1,5 +1,5 @@
-import * as crypto from 'node:crypto';
 import type { Finding, SymbolRecord } from '../types.js';
+import { stableHash } from '../utils/hash.js';
 
 export interface DeepNestingDetectorInput {
   symbols: ReadonlyArray<SymbolRecord>;
@@ -138,6 +138,3 @@ function maskStringsAndComments(raw: string): string {
   return out;
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

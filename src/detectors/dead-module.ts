@@ -1,7 +1,7 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import type { Finding } from '../types.js';
 import type { ImportGraph } from '../graph/import-graph.js';
+import { stableHash } from '../utils/hash.js';
 
 export interface DeadModuleDetectorInput {
   /** All workspace-relative files parsed in this run. */
@@ -15,7 +15,7 @@ export interface DeadModuleDetectorInput {
 }
 
 // Files not reachable from any entry point + not themselves entry points
-// + not .d.ts/ambient. LOW — framework conventions create FPs; snooze.
+// + not .d.ts/ambient. LOW — framework conventions create FPs; mark as FP.
 export function detectDeadModules(input: DeadModuleDetectorInput): Finding[] {
   const findings: Finding[] = [];
   for (const file of input.files) {
@@ -42,7 +42,7 @@ export function detectDeadModules(input: DeadModuleDetectorInput): Finding[] {
         },
       ],
       suggestion:
-        'If this file is intentionally loaded by convention (framework route, dynamic import, build step), add an entry-point hint or snooze the fingerprint. Otherwise delete it.',
+        'If this file is intentionally loaded by convention (framework route, dynamic import, build step), add an entry-point hint or mark this finding as a false positive. Otherwise delete it.',
       fingerprint: `dead-module:${stableHash(file)}`,
     });
   }
@@ -63,6 +63,3 @@ function shouldExcludeFromDeadCheck(file: string): boolean {
   return ALWAYS_SKIP_PATTERNS.some((re) => re.test(posix));
 }
 
-function stableHash(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
-}

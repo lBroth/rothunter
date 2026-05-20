@@ -1,8 +1,9 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import type { ImportRecord } from '../graph/import-graph.js';
 import type { Finding } from '../types.js';
+import { stableHash } from '../utils/hash.js';
+import { escapeForRegex } from '../utils/regex.js';
 
 export interface UnusedDepsDetectorInput {
   workspaceRoot: string;
@@ -112,9 +113,6 @@ function findLineInJson(raw: string, key: string): number {
   return raw.slice(0, m.index).split('\n').length;
 }
 
-function escapeForRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function snippetAround(raw: string, line: number): string {
   const lines = raw.split('\n');
@@ -123,6 +121,3 @@ function snippetAround(raw: string, line: number): string {
   return lines.slice(from, to).join('\n');
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

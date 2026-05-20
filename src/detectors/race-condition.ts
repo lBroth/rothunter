@@ -1,5 +1,6 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
+import { stableHash } from '../utils/hash.js';
+import { trimSnippet, trimEnclosingSource } from '../utils/snippet.js';
 import {
   Project,
   SyntaxKind,
@@ -10,14 +11,10 @@ import {
   type Node,
 } from 'ts-morph';
 import type { Finding } from '../types.js';
-import { buildCfg, blockOf, reachable, type Cfg } from '../graph/cfg.js';
+import { buildCfg, blockOf, reachable } from '../graph/cfg.js';
+import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
-export interface RaceConditionDetectorInput {
-  workspaceRoot: string;
-  files: ReadonlyArray<string>;
-  /** Optional pre-built ts-morph Project — saves a parse per file. */
-  project?: Project;
-}
+export interface RaceConditionDetectorInput extends FileWalkingDetectorInput {}
 
 type AsyncCallable = FunctionDeclaration | MethodDeclaration | ArrowFunction | FunctionExpression;
 
@@ -614,16 +611,7 @@ function hasIgnoreAnnotation(node: Node): boolean {
   return text.includes(IGNORE_ANNOTATION);
 }
 
-function trimSnippet(text: string): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim();
-  return collapsed.length > 140 ? collapsed.slice(0, 137) + '...' : collapsed;
-}
 
-function trimEnclosingSource(full: string): string {
-  const lines = full.split(/\r?\n/);
-  if (lines.length <= 42) return full;
-  return [...lines.slice(0, 40), '  // ...', lines[lines.length - 1] ?? ''].join('\n');
-}
 
 function toFinding(c: RaceCandidate): Finding {
   const title = `Read-modify-write across \`await\` on ${c.target}`;
@@ -704,6 +692,3 @@ function promiseAllToFinding(r: PromiseAllRace): Finding {
   };
 }
 
-function stableHash(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
-}

@@ -1,19 +1,11 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import { Project, SyntaxKind, type CallExpression, type Node } from 'ts-morph';
 import type { Finding } from '../types.js';
+import { stableHash } from '../utils/hash.js';
+import { trimSnippet, trimEnclosingSource } from '../utils/snippet.js';
+import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
-export interface ApiRaceDetectorInput {
-  workspaceRoot: string;
-  files: ReadonlyArray<string>;
-  /**
-   * Pre-built ts-morph Project to reuse parse state across detectors. When
-   * provided the detector skips its own `addSourceFileAtPathIfExists` pass
-   * and reads source files directly from the shared project — saves a
-   * full parse per file × detector.
-   */
-  project?: Project;
-}
+export interface ApiRaceDetectorInput extends FileWalkingDetectorInput {}
 
 interface ApiWriteCall {
   method: string; // upper-cased: PUT / PATCH / POST / DELETE
@@ -113,7 +105,7 @@ export function detectApiRaces(input: ApiRaceDetectorInput): Finding[] {
         }),
       })),
       suggestion:
-        'Add an `If-Match` / version-aware update on the server, single-flight the client calls, or merge the duplicated callers into one. If the calls are guaranteed serialised by a queue, document and snooze the fingerprint.',
+        'Add an `If-Match` / version-aware update on the server, single-flight the client calls, or merge the duplicated callers into one. If the calls are guaranteed serialised by a queue, document the synchronisation and mark this finding as a false positive.',
       fingerprint: `api-race:${stableHash(key)}`,
     });
   }
@@ -249,17 +241,5 @@ function findEnclosingFunction(node: Node): Node | null {
   return null;
 }
 
-function trimSnippet(text: string): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim();
-  return collapsed.length > 160 ? collapsed.slice(0, 157) + '...' : collapsed;
-}
 
-function trimEnclosingSource(full: string): string {
-  const lines = full.split(/\r?\n/);
-  if (lines.length <= 42) return full;
-  return [...lines.slice(0, 40), '  // ...', lines[lines.length - 1] ?? ''].join('\n');
-}
 
-function stableHash(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
-}

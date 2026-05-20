@@ -1,8 +1,8 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { Finding, FunctionStructure, SymbolRecord } from '../types.js';
+import { stableHash } from '../utils/hash.js';
 
 export interface SimilarFunctionsDetectorInput {
   workspaceRoot: string;
@@ -24,7 +24,12 @@ export function detectSimilarFunctions(input: SimilarFunctionsDetectorInput): Fi
   const threshold = input.similarityThreshold ?? 0.5;
   const nameWeight = clamp01(input.nameWeight ?? 0.4);
   const bodyWeight = 1 - nameWeight;
-  const minLines = input.minLines ?? 3;
+  // Bumped default 3 → 5. Tiny 2-3 line utilities (template-literal
+  // builders like `fileUrl`, `PLACEHOLDER_TEMPLATE`, single-expression
+  // wrappers) cluster on AST shape but consolidating them invents
+  // abstractions over unrelated domains. 5 LOC keeps the body
+  // substantial enough that a real duplicate is worth flagging.
+  const minLines = input.minLines ?? 5;
   const maxFindings = input.maxFindings ?? 25;
 
   const candidates: Array<{
@@ -35,6 +40,19 @@ export function detectSimilarFunctions(input: SimilarFunctionsDetectorInput): Fi
   for (const sym of input.symbols) {
     if (sym.kind !== 'function') continue;
     if (IGNORE_NAMES.has(sym.name)) continue;
+    // Skip test + spec files — test helpers (`span`, `setup`,
+    // `beforeEach`) cluster on AST shape across packages but each
+    // package owns its own fixtures; refactoring to share them couples
+    // unrelated suites.
+    if (isTestPath(sym.file)) continue;
+    // Skip well-known framework-idiom prefixes. These names exist by
+    // convention — Commander subcommand wires (`registerX`), React
+    // hooks (`useX`), event handlers (`handleX` / `onX`), DI factories
+    // (`createX`/`makeX`/`buildX`), boot-up functions (`initX`,
+    // `setupX`) — and consolidating them invents a fake abstraction
+    // around the framework contract. Agents reading the finding
+    // correctly refuse the refactor; better to never emit the finding.
+    if (FRAMEWORK_IDIOM_PREFIXES.some((p) => sym.name.startsWith(p))) continue;
     if (sym.range.endLine - sym.range.startLine + 1 < minLines) continue;
     const fn = sym.structure as FunctionStructure | undefined;
     if (!fn || fn.kind !== 'function') continue;
@@ -222,6 +240,35 @@ function buildSuggestion(canonical: RankedEntry, others: RankedEntry[], packageW
   );
 }
 
+// Common framework-idiom name prefixes. Functions whose name starts
+// with any of these are part of a convention (Commander, React, DI,
+// event handlers) and the "cluster" they form is the framework
+// contract, not duplication. Listed before `IGNORE_NAMES` so the
+// match runs once per candidate during the initial filter.
+const FRAMEWORK_IDIOM_PREFIXES: ReadonlyArray<string> = [
+  'register', // Commander / DI subcommand wires
+  'use',      // React hooks
+  'handle',   // event handlers
+  'on',       // event handlers (onClick, onChange, …)
+  'create',   // factories
+  'make',     // factories
+  'build',    // builders
+  'init',     // boot-up
+  'setup',    // boot-up
+  'before',   // test lifecycle (beforeEach / beforeAll)
+  'after',    // test lifecycle
+];
+
+function isTestPath(file: string): boolean {
+  const posix = file.replace(/\\/g, '/');
+  return (
+    /(?:^|\/)__tests__\//.test(posix) ||
+    /(?:^|\/)tests?\//.test(posix) ||
+    /\.test\.(?:ts|tsx|js|jsx|mts|cts|mjs|cjs)$/.test(posix) ||
+    /\.spec\.(?:ts|tsx|js|jsx|mts|cts|mjs|cjs)$/.test(posix)
+  );
+}
+
 const IGNORE_NAMES = new Set<string>([
   'default', 'render', 'constructor', 'toString', 'toJSON', 'valueOf',
   'index', 'main', 'init', 'setup', 'teardown', 'beforeEach', 'afterEach',
@@ -326,6 +373,3 @@ function fmtDate(unix: number): string {
   return new Date(unix * 1000).toISOString().slice(0, 10);
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

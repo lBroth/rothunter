@@ -105,6 +105,59 @@ describe('dead-export detector', () => {
     }
   });
 
+  it('does NOT flag an interface used as return type of a sibling exported function', async () => {
+    const root = await setupWorkspace({
+      'index.ts': "import { build } from './lib';\nexport function main(): void { build(); }\n",
+      'lib.ts':
+        'export interface Result { ok: boolean }\n' +
+        'export function build(): Result { return { ok: true }; }\n',
+    });
+    try {
+      const { parsed, symbols, entryPoints } = await scan(root);
+      const findings = detectDeadExports({ symbols, imports: parsed.imports, entryPoints });
+      const titles = findings.map((f) => f.title);
+      // `Result` is reachable through `build()`'s signature even though
+      // no module imports the type by name — it IS the public type-surface.
+      expect(titles).not.toContain('Unused export: Result in lib.ts');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does NOT flag an interface used as parameter type of a sibling exported function', async () => {
+    const root = await setupWorkspace({
+      'index.ts': "import { use } from './lib';\nexport function main(): void { use({ ok: true }); }\n",
+      'lib.ts':
+        'export interface Opts { ok: boolean }\n' +
+        'export function use(opts: Opts): void { void opts; }\n',
+    });
+    try {
+      const { parsed, symbols, entryPoints } = await scan(root);
+      const findings = detectDeadExports({ symbols, imports: parsed.imports, entryPoints });
+      const titles = findings.map((f) => f.title);
+      expect(titles).not.toContain('Unused export: Opts in lib.ts');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('still flags a type-alias used by NOTHING in the same file', async () => {
+    const root = await setupWorkspace({
+      'index.ts': "import { x } from './lib';\nexport function main(): void { x(); }\n",
+      'lib.ts':
+        'export type Ghost = { id: string };\n' +
+        'export function x(): void {}\n',
+    });
+    try {
+      const { parsed, symbols, entryPoints } = await scan(root);
+      const findings = detectDeadExports({ symbols, imports: parsed.imports, entryPoints });
+      const titles = findings.map((f) => f.title);
+      expect(titles).toContain('Unused export: Ghost in lib.ts');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('skips ambient `.d.ts` files and `__fixtures__/`', async () => {
     const root = await setupWorkspace({
       'index.ts': "import { v } from './fixtures-host';\nexport function main(): void { v(); }\n",

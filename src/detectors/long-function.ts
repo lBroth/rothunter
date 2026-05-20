@@ -1,5 +1,5 @@
-import * as crypto from 'node:crypto';
 import type { Finding, SymbolRecord } from '../types.js';
+import { stableHash } from '../utils/hash.js';
 
 export interface LongFunctionDetectorInput {
   symbols: ReadonlyArray<SymbolRecord>;
@@ -58,6 +58,3 @@ function firstLines(source: string, n: number): string {
   return source.split('\n').slice(0, n).join('\n');
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

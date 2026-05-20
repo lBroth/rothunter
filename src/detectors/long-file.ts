@@ -1,19 +1,15 @@
-import * as crypto from 'node:crypto';
-import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
 import { makeSourceReader } from '../utils/source-reader.js';
+import { stableHash } from '../utils/hash.js';
+import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
-export interface LongFileDetectorInput {
-  workspaceRoot: string;
-  files: ReadonlyArray<string>;
-  /** LOW threshold in non-blank/non-comment lines. Default 400. */
+export interface LongFileDetectorInput extends FileWalkingDetectorInput {
+/** LOW threshold in non-blank/non-comment lines. Default 400. */
   lowThreshold?: number;
   /** MED threshold. Default 700. */
   medThreshold?: number;
   /** HIGH threshold. Default 1200. */
   highThreshold?: number;
-  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
-  project?: Project;
 }
 
 // Effective LOC (non-blank, non-pure-comment) over 400 (low) / 700 (med) /
@@ -93,6 +89,3 @@ function isAnalysable(file: string): boolean {
     && !/\.generated\.(?:ts|js)$/.test(file);
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

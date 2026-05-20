@@ -97,6 +97,49 @@ describe('import graph + dead-module detector', () => {
     }
   });
 
+  it('treats files referenced by `package.json` scripts as entry points', async () => {
+    const root = await setupWorkspace({
+      'package.json': JSON.stringify(
+        {
+          name: 'pkg',
+          scripts: {
+            dev: 'tsx watch packages/gateway/src/dev.ts',
+            seed: 'node ./scripts/seed.ts',
+          },
+        },
+        null,
+        2,
+      ),
+      'packages/gateway/src/dev.ts': "export function dev(): void {}\n",
+      'scripts/seed.ts': "export function seed(): void {}\n",
+      'src/orphan.ts': 'export function orphan(): void {}\n',
+    });
+    try {
+      const parser = new TypeScriptParser();
+      const parsed = await parser.parseWorkspaceFull({ workspaceRoot: root });
+      const graph = buildImportGraph(parsed.imports);
+      const entries = discoverEntryPoints(root, new Set(parsed.files));
+      // Both scripts-referenced files marked as entry points → never
+      // surfaced by dead-module. `src/orphan.ts` still flagged.
+      expect(entries.has('packages/gateway/src/dev.ts')).toBe(true);
+      // `scripts/seed.ts` is ALSO under the `scripts/` convention so
+      // it would be reachable regardless; the value here is the gateway
+      // dev file which has no convention coverage.
+      const reachable = reachableFrom(graph, entries);
+      const findings = detectDeadModules({
+        files: parsed.files,
+        graph,
+        entryPoints: entries,
+        reachable,
+      });
+      const deadFiles = findings.map((f) => f.evidence[0]!.file);
+      expect(deadFiles).toContain('src/orphan.ts');
+      expect(deadFiles).not.toContain('packages/gateway/src/dev.ts');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('skips ambient declaration files (`*.d.ts`)', async () => {
     const root = await setupWorkspace({
       'index.ts': "export {};\n",

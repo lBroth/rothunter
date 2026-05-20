@@ -1,6 +1,6 @@
-import * as crypto from 'node:crypto';
 import type { Finding, SymbolRecord } from '../types.js';
 import type { ImportRecord } from '../graph/import-graph.js';
+import { stableHash } from '../utils/hash.js';
 
 export interface DeadApiDetectorInput {
   /** Symbols from every linked workspace. `exported` set, `workspace` set. */
@@ -106,7 +106,7 @@ export function detectDeadApis(input: DeadApiDetectorInput): Finding[] {
         },
       ],
       suggestion:
-        'If this is an internal helper accidentally exported, remove the `export` keyword. If it is meant for external consumers outside the linked group, snooze the fingerprint.',
+        'If this is an internal helper accidentally exported, remove the `export` keyword. If it is meant for external consumers outside the linked group, mark this finding as a false positive.',
       fingerprint: `dead-api:${stableHash(`${sym.workspace}::${sym.file}::${sym.name}`)}`,
     });
   }
@@ -118,6 +118,3 @@ function stripWorkspace(file: string, workspace: string): string {
   return file.startsWith(prefix) ? file.slice(prefix.length) : file;
 }
 
-function stableHash(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
-}

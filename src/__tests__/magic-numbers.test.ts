@@ -78,4 +78,79 @@ describe('magic-numbers detector', () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('ignores digits inside regex literals (charset / quantifiers)', () => {
+    const root = workspace({
+      'src/a.ts':
+        "function f(s: string) {\n" +
+        "  const charset = /[A-Za-z0-9._%+\\-]+/;\n" +
+        "  const fifteen = /\\d{15}/;\n" +
+        "  const ranges = /\\d{1,3}\\.\\d{1,3}/;\n" +
+        "  const ipPrefix = /^(?:10\\.|192\\.168\\.|172\\.(?:1[6-9]|2\\d|3[01])\\.)/;\n" +
+        "  return charset.test(s) || fifteen.test(s) || ranges.test(s) || ipPrefix.test(s);\n" +
+        "}\n",
+    });
+    try {
+      const findings = detectMagicNumbers({ workspaceRoot: root, files: ['src/a.ts'] });
+      expect(findings).toHaveLength(0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores elements of `new Set([...])` bound to a named const', () => {
+    const root = workspace({
+      'src/a.ts': "const RETRYABLE_HTTP = new Set([408, 425, 429, 500, 502, 503, 504]);\n",
+    });
+    try {
+      const findings = detectMagicNumbers({ workspaceRoot: root, files: ['src/a.ts'] });
+      expect(findings).toHaveLength(0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores HTTP status codes in `reply.code(NNN)` / `res.status(NNN)`', () => {
+    const root = workspace({
+      'src/a.ts':
+        "function handler(reply: { code: (n: number) => any }, res: { status: (n: number) => any }) {\n" +
+        "  reply.code(502).send({ error: 'bad gateway' });\n" +
+        "  res.status(404);\n" +
+        "  if (status < 200 || status >= 300) return;\n" +
+        "}\n",
+    });
+    try {
+      const findings = detectMagicNumbers({ workspaceRoot: root, files: ['src/a.ts'] });
+      // 200/300 in whitelist; 502/404 are HTTP-status idiom and skipped.
+      expect(findings).toHaveLength(0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores object-literal `key: NUMBER` bare values', () => {
+    const root = workspace({
+      'src/a.ts':
+        "const recognizer = { name: 'r', confidence: 0.95, threshold: 0.5, retries: 47 };\n",
+    });
+    try {
+      const findings = detectMagicNumbers({ workspaceRoot: root, files: ['src/a.ts'] });
+      expect(findings).toHaveLength(0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores parameter defaults `arg = NUMBER`', () => {
+    const root = workspace({
+      'src/a.ts':
+        "function decode(threshold = 0.5, iouThreshold = 0.65): number { return threshold * iouThreshold; }\n",
+    });
+    try {
+      const findings = detectMagicNumbers({ workspaceRoot: root, files: ['src/a.ts'] });
+      expect(findings).toHaveLength(0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

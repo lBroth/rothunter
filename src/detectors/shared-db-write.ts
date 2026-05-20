@@ -1,5 +1,6 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
+import { stableHash } from '../utils/hash.js';
+import { trimSnippet, trimEnclosingSource } from '../utils/snippet.js';
 import {
   Project,
   SyntaxKind,
@@ -8,13 +9,9 @@ import {
   type PropertyAccessExpression,
 } from 'ts-morph';
 import type { Finding } from '../types.js';
+import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
-export interface SharedDbWriteDetectorInput {
-  workspaceRoot: string;
-  files: ReadonlyArray<string>;
-  /** Optional pre-built ts-morph Project — saves a parse per file. */
-  project?: Project;
-}
+export interface SharedDbWriteDetectorInput extends FileWalkingDetectorInput {}
 
 interface WriteCall {
   /** Lowercased entity / table / collection name. */
@@ -128,7 +125,7 @@ export function detectSharedDbWrites(input: SharedDbWriteDetectorInput): Finding
         }),
       })),
       suggestion:
-        'Coordinate the writes via a single owner (one service is the source of truth, others publish events), wrap concurrent paths in an optimistic-locking version check, or merge into a single transactional update. If the writes are guaranteed serialised (queue, mutex, single-instance worker), document the synchronisation and snooze the fingerprint.',
+        'Coordinate the writes via a single owner (one service is the source of truth, others publish events), wrap concurrent paths in an optimistic-locking version check, or merge into a single transactional update. If the writes are guaranteed serialised (queue, mutex, single-instance worker), document the synchronisation and mark this finding as a false positive.',
       fingerprint: `shared-db-write:${stableHash(key)}`,
     });
   }
@@ -663,17 +660,5 @@ function findEnclosingFunction(node: Node): Node | null {
   return null;
 }
 
-function trimSnippet(text: string): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim();
-  return collapsed.length > 160 ? collapsed.slice(0, 157) + '...' : collapsed;
-}
 
-function trimEnclosingSource(full: string): string {
-  const lines = full.split(/\r?\n/);
-  if (lines.length <= 42) return full;
-  return [...lines.slice(0, 40), '  // ...', lines[lines.length - 1] ?? ''].join('\n');
-}
 
-function stableHash(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
-}

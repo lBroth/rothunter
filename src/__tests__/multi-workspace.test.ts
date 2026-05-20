@@ -16,11 +16,14 @@ import { RotHunter } from '../rothunter.js';
  *   2. evidence paths are prefixed with the workspace name so the
  *      dashboard renders globally-unique locations;
  *   3. fingerprints are namespaced with the workspace name so identically-
- *      named files across workspaces never collide in the snooze + FP
- *      store;
+ *      named files across workspaces never collide in the FP store;
  *   4. always-on cross-repo detectors (duplicate-type, dead-export, …)
  *      still see the merged symbol set, so a duplicate type living in
  *      two workspaces is still flagged once.
+ *
+ * Uses `console-log-prod` as the per-workspace file-walking probe — it
+ * emits LOW severity findings (so the LLM triage path doesn't engage)
+ * and triggers on a single regex match, keeping the fixture minimal.
  */
 describe('multi-workspace runner', () => {
   let parent: string;
@@ -28,8 +31,8 @@ describe('multi-workspace runner', () => {
   beforeEach(() => {
     parent = fs.mkdtempSync(path.join(os.tmpdir(), 'rothunter-multi-'));
 
-    // Workspace A — contains a real secret leak (AWS access key) the
-    // per-ws file-walking detector should catch.
+    // Workspace A — contains a `console.log` for the file-walking
+    // probe + a SharedDto interface for the cross-workspace cluster.
     const wsA = path.join(parent, 'service-a');
     fs.mkdirSync(path.join(wsA, 'src'), { recursive: true });
     fs.writeFileSync(
@@ -40,8 +43,8 @@ describe('multi-workspace runner', () => {
     fs.writeFileSync(
       path.join(wsA, 'src', 'config.ts'),
       [
-        '// service-a config — intentionally leaks a secret to exercise the detector.',
-        "export const AWS_KEY = 'AKIAIOSFODNN7EXAMPLE';",
+        '// service-a config',
+        "export function bootA(): void { console.log('booting service-a'); }",
         'export interface SharedDto {',
         '  id: string;',
         '  age: number;',
@@ -54,9 +57,7 @@ describe('multi-workspace runner', () => {
       'utf-8',
     );
 
-    // Workspace B — different name, same DTO structure → duplicate-type
-    // should cluster across workspaces. Also contains a localhost-URL
-    // secret-leak finding so the per-ws path produces findings here too.
+    // Workspace B — same SharedDto + its own console.log.
     const wsB = path.join(parent, 'service-b');
     fs.mkdirSync(path.join(wsB, 'src'), { recursive: true });
     fs.writeFileSync(
@@ -67,8 +68,8 @@ describe('multi-workspace runner', () => {
     fs.writeFileSync(
       path.join(wsB, 'src', 'config.ts'),
       [
-        '// service-b config — distinct from service-a but same DTO shape.',
-        "export const API_BASE = 'http://localhost:4000/api';",
+        '// service-b config',
+        "export function bootB(): void { console.log('booting service-b'); }",
         'export interface SharedDto {',
         '  id: string;',
         '  age: number;',
@@ -101,33 +102,22 @@ describe('multi-workspace runner', () => {
     const rothunter = new RotHunter();
     const result = await rothunter.run({
       workspaceRoot: parent,
-      // Limit to non-LLM detectors so the test runs without a live LLM
-      // backend. The per-ws runner code path is identical for the others.
-      detectorsAllow: new Set(['secret-leak', 'duplicate-type']),
-      ignoreSnoozeFile: true,
+      detectorsAllow: new Set(['console-log-prod', 'duplicate-type']),
+      
     });
 
-    // 1. Per-workspace file-walking ran — both workspaces produced
-    //    secret-leak findings (AWS key in A, localhost URL in B).
-    const secretFindings = result.findings.filter((f) => f.detectorId === 'secret-leak');
-    expect(secretFindings.length).toBeGreaterThanOrEqual(2);
+    const probeFindings = result.findings.filter((f) => f.detectorId === 'console-log-prod');
+    expect(probeFindings.length).toBeGreaterThanOrEqual(2);
 
-    // 2. Evidence paths are prefixed with the workspace name.
-    const allEvidenceFiles = secretFindings.flatMap((f) => f.evidence.map((e) => e.file));
+    const allEvidenceFiles = probeFindings.flatMap((f) => f.evidence.map((e) => e.file));
     expect(allEvidenceFiles.some((p) => p.startsWith('service-a/'))).toBe(true);
     expect(allEvidenceFiles.some((p) => p.startsWith('service-b/'))).toBe(true);
-    // Nothing should leak as a bare workspace-relative path.
     expect(allEvidenceFiles.every((p) => /^service-[ab]\//.test(p))).toBe(true);
 
-    // 3. Fingerprints are namespaced with the workspace name. Pre-fix
-    //    both workspaces would have produced `secret-leak:<hash>` keys
-    //    that collide whenever the relative path inside each workspace
-    //    matched; post-fix they're `service-a:secret-leak:<hash>` /
-    //    `service-b:secret-leak:<hash>`.
-    const fps = secretFindings.map((f) => f.fingerprint);
+    const fps = probeFindings.map((f) => f.fingerprint);
     expect(fps.some((fp) => fp.startsWith('service-a:'))).toBe(true);
     expect(fps.some((fp) => fp.startsWith('service-b:'))).toBe(true);
-    expect(new Set(fps).size).toBe(fps.length); // no collisions
+    expect(new Set(fps).size).toBe(fps.length);
   }, 30_000);
 
   it('cross-repo always-on detectors still see the merged symbol set', async () => {
@@ -135,16 +125,11 @@ describe('multi-workspace runner', () => {
     const result = await rothunter.run({
       workspaceRoot: parent,
       detectorsAllow: new Set(['duplicate-type']),
-      ignoreSnoozeFile: true,
-      // Reject the duplicate-type LLM verdict outright by setting a
-      // threshold so the deterministic finding survives even when the
-      // LLM step is skipped — we don't have an LLM in this test env.
+      
       llmRejectionThreshold: 0,
     });
 
     const dupTypes = result.findings.filter((f) => f.detectorId === 'duplicate-type');
-    // The two SharedDto declarations should cluster — one finding with
-    // both workspaces represented in evidence (prefixed paths).
     expect(dupTypes.length).toBeGreaterThanOrEqual(1);
     const sharedDtoCluster = dupTypes.find((f) =>
       f.evidence.some((e) => e.file.startsWith('service-a/')) &&
@@ -157,8 +142,8 @@ describe('multi-workspace runner', () => {
     const rothunter = new RotHunter();
     const result = await rothunter.run({
       workspaceRoot: parent,
-      detectorsAllow: new Set(['secret-leak']),
-      ignoreSnoozeFile: true,
+      detectorsAllow: new Set(['console-log-prod']),
+      
     });
 
     const perWs = new Map<string, number>();

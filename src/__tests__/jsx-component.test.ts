@@ -1,4 +1,4 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -13,6 +13,14 @@ async function setup(files: Record<string, string>): Promise<string> {
   }
   return root;
 }
+
+// LLM verdict pass runs against whatever backend is reachable on this
+// machine. Each verdict can take 1–2 s on local llama.cpp, and the
+// expanded TRIAGE_DETECTORS set means more candidates per scan — push
+// the per-test budget up so the suite stays green when the dev LLM is
+// loaded. Tests without a reachable LLM short-circuit via warmup() and
+// stay fast.
+jest.setTimeout(60_000);
 
 describe('JSX / React component duplication', () => {
   it('detects two duplicate React functional components (arrow form) across files', async () => {
@@ -32,7 +40,7 @@ export const HeroButton = ({ label }: { label: string }): JSX.Element => {
     });
     try {
       const rothunter = new RotHunter();
-      const result = await rothunter.run({ workspaceRoot: root, ignoreSnoozeFile: true });
+      const result = await rothunter.run({ workspaceRoot: root });
       const dupFn = result.findings.filter((f) => f.detectorId === 'duplicate-function');
       expect(dupFn.length).toBeGreaterThanOrEqual(1);
       // Should reference both component names.
@@ -61,7 +69,7 @@ export const Arrow = ({ count }: { count: number }): JSX.Element => {
     });
     try {
       const rothunter = new RotHunter();
-      const result = await rothunter.run({ workspaceRoot: root, ignoreSnoozeFile: true });
+      const result = await rothunter.run({ workspaceRoot: root });
       const dupFn = result.findings.filter((f) => f.detectorId === 'duplicate-function');
       // The bodies are structurally identical even though one is a function
       // declaration and the other an arrow assigned to a const. Either layer

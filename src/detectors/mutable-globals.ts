@@ -1,14 +1,11 @@
-import * as crypto from 'node:crypto';
-import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
 import { makeSourceReader } from '../utils/source-reader.js';
+import { stableHash } from '../utils/hash.js';
+import { hasIgnoreAnnotation } from '../utils/ignore-annotation.js';
+import { escapeForRegex } from '../utils/regex.js';
+import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
-export interface MutableGlobalsDetectorInput {
-  workspaceRoot: string;
-  files: ReadonlyArray<string>;
-  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
-  project?: Project;
-}
+export interface MutableGlobalsDetectorInput extends FileWalkingDetectorInput {}
 
 // Top-level `let`/`var` reassigned in the same file → shared mutable
 // state across importers. MED. One-shot assignment at decl is skipped.
@@ -56,6 +53,7 @@ function analyseFile(file: string, raw: string): Finding[] {
     const re = new RegExp(`(?<![\\.\\w])${escapeForRegex(d.name)}\\s*(?:=(?!=)|\\+=|-=|\\*=|/=|\\?\\?=|\\|\\|=|&&=)`, 'g');
     const matches = [...after.matchAll(re)];
     if (matches.length === 0) continue;
+    if (hasIgnoreAnnotation(raw, d.line, 'mutable-globals')) continue;
     out.push({
       detectorId: 'mutable-globals',
       severity: 'medium',
@@ -79,9 +77,6 @@ function analyseFile(file: string, raw: string): Finding[] {
   return out;
 }
 
-function escapeForRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function isAnalysable(file: string): boolean {
   const posix = file.replace(/\\/g, '/');
@@ -101,6 +96,3 @@ function snippetAround(raw: string, line: number): string {
   return lines.slice(from, to).join('\n');
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

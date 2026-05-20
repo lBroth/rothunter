@@ -1,8 +1,17 @@
-import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import type { Finding } from '../types.js';
+import { stableHash } from '../utils/hash.js';
+import { escapeForRegex } from '../utils/regex.js';
+import { loadGitignore } from '../utils/gitignore.js';
 
+/**
+ * todo-comments takes an OPTIONAL files list because the detector
+ * walks the workspace itself when omitted — that's how it picks up
+ * Python / Go / shell sources the TS parser ignores. The shared
+ * `FileWalkingDetectorInput` requires `files`, so this detector keeps
+ * its own shape rather than extending.
+ */
 export interface TodoCommentsDetectorInput {
   workspaceRoot: string;
   /**
@@ -120,10 +129,10 @@ function severityFor(marker: string): 'high' | 'medium' | 'low' {
  */
 function walkFiles(root: string): string[] {
   const out: string[] = [];
-  const skipDirs = new Set([
-    'node_modules', 'dist', 'build', '.git', '.next', '.turbo', 'coverage',
-    '.cache', '.parcel-cache', 'target', '__pycache__', '.venv', 'venv',
-  ]);
+  // Path exclusions come from `.gitignore` + `.rothunterignore` only.
+  // The matcher always bakes in `node_modules` + `.git` so a workspace
+  // without ignore files still walks something sensible.
+  const gitignore = loadGitignore(root);
   const stack: string[] = [''];
   while (stack.length > 0) {
     const rel = stack.pop()!;
@@ -135,8 +144,8 @@ function walkFiles(root: string): string[] {
       continue;
     }
     for (const name of entries) {
-      if (skipDirs.has(name)) continue;
       const childRel = rel ? path.join(rel, name) : name;
+      const posixRel = childRel.replace(/\\/g, '/');
       const childAbs = path.join(root, childRel);
       let s;
       try {
@@ -145,9 +154,11 @@ function walkFiles(root: string): string[] {
         continue;
       }
       if (s.isDirectory()) {
+        if (gitignore.ignores(posixRel + '/')) continue;
         stack.push(childRel);
       } else if (s.isFile() && isAnalysable(childRel)) {
-        out.push(childRel.replace(/\\/g, '/'));
+        if (gitignore.ignores(posixRel)) continue;
+        out.push(posixRel);
       }
     }
   }
@@ -169,10 +180,4 @@ function snippetAround(lines: ReadonlyArray<string>, line: number): string {
   return lines.slice(from, to).join('\n');
 }
 
-function escapeForRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

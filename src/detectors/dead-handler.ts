@@ -1,7 +1,7 @@
-import * as crypto from 'node:crypto';
 import type { Finding } from '../types.js';
 import type { ImportRecord } from '../graph/import-graph.js';
 import { isHandlerConventionFile } from '../graph/handler-conventions.js';
+import { stableHash } from '../utils/hash.js';
 
 export interface DeadHandlerDetectorInput {
   /** All workspace-relative files parsed in this run. */
@@ -41,13 +41,10 @@ export function detectDeadHandlers(input: DeadHandlerDetectorInput): Finding[] {
         },
       ],
       suggestion:
-        'If this handler is wired by a non-TypeScript config (`serverless.yml`, `sam.template.yaml`, runtime path string), snooze the fingerprint. Otherwise it is dead infrastructure — wire it or remove the file.',
+        'If this handler is wired by a non-TypeScript config (`serverless.yml`, `sam.template.yaml`, runtime path string), mark this finding as a false positive. Otherwise it is dead infrastructure — wire it or remove the file.',
       fingerprint: `dead-handler:${stableHash(file)}`,
     });
   }
   return findings;
 }
 
-function stableHash(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
-}

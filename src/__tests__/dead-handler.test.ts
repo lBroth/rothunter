@@ -87,7 +87,7 @@ describe('dead-handler detector', () => {
   it('flags Netlify functions that the netlify.toml config does not bind', async () => {
     const root = await setup({
       'netlify/functions/wired.ts':
-        "// some non-TS config wires this — we can't see it. Treat as orphan today;\n// snoozeable in .rothunterignore. This test documents the conservative behavior.\nexport const handler = async (): Promise<void> => {};\n",
+        "// some non-TS config wires this — we can't see it. Treat as orphan today;\n// mark as false positive from the dashboard. This test documents the conservative behavior.\nexport const handler = async (): Promise<void> => {};\n",
       'netlify/functions/orphan.ts': 'export const handler = async (): Promise<void> => {};\n',
     });
     try {

@@ -1,6 +1,6 @@
-import * as crypto from 'node:crypto';
 import type { ImportGraph } from '../graph/import-graph.js';
 import type { Finding } from '../types.js';
+import { stableHash } from '../utils/hash.js';
 
 export interface HotHubFileDetectorInput {
   graph: ImportGraph;
@@ -53,6 +53,3 @@ export function detectHotHubFiles(input: HotHubFileDetectorInput): Finding[] {
   }));
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

@@ -1,14 +1,10 @@
-import * as crypto from 'node:crypto';
-import type { Project } from 'ts-morph';
 import type { Finding } from '../types.js';
 import { makeSourceReader } from '../utils/source-reader.js';
+import { stableHash } from '../utils/hash.js';
+import { hasIgnoreAnnotation } from '../utils/ignore-annotation.js';
+import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
-export interface SilentCatchDetectorInput {
-  workspaceRoot: string;
-  files: ReadonlyArray<string>;
-  /** Optional shared ts-morph Project — source is read from its in-memory cache instead of disk. */
-  project?: Project;
-}
+export interface SilentCatchDetectorInput extends FileWalkingDetectorInput {}
 
 // try/catch whose body is empty, only console.log/warn/info/debug, or a bare
 // return. console.error + rethrow intentional, skipped. MED.
@@ -36,6 +32,7 @@ function analyseFile(file: string, raw: string): Finding[] {
     const verdict = classifyCatchBody(body);
     if (!verdict) continue;
     const line = lineOf(raw, match.index!);
+    if (hasIgnoreAnnotation(raw, line, 'silent-catch')) continue;
     const snippet = sliceSnippet(raw, match.index!, closeBraceIdx);
     out.push({
       detectorId: 'silent-catch',
@@ -65,6 +62,12 @@ interface CatchVerdict {
 }
 
 function classifyCatchBody(body: string): CatchVerdict | null {
+  // Author already documented the swallow with an intent comment — this
+  // is exactly what the detector's suggestion asks people to do. Flagging
+  // it again would punish the developer for following the guidance and
+  // trains the team to ignore the detector. Match the same keyword set
+  // we recommend in the suggestion text below.
+  if (INTENT_COMMENT_RE.test(body)) return null;
   const stripped = stripCommentsAndWhitespace(body);
   if (stripped === '') {
     return {
@@ -88,6 +91,13 @@ function classifyCatchBody(body: string): CatchVerdict | null {
   }
   return null;
 }
+
+// Keywords that signal the swallow is deliberate. Matched against
+// raw body text (comments NOT stripped) so it picks up `// Deliberate
+// swallow: …`, `// intentional — non-JSON frame`, `/* expected during
+// shutdown */`, etc.
+const INTENT_COMMENT_RE =
+  /\/\/[^\n]*\b(deliberate|intentional|intentionally|expected|known(?:-?safe)?|on\s+purpose|swallow(?:ed)?|by\s+design|noop|no-op)\b|\/\*[\s\S]*?\b(deliberate|intentional|intentionally|expected|known(?:-?safe)?|on\s+purpose|swallow(?:ed)?|by\s+design|noop|no-op)\b[\s\S]*?\*\//i;
 
 function stripCommentsAndWhitespace(body: string): string {
   return body
@@ -166,6 +176,3 @@ function isAnalysable(file: string): boolean {
     && !/\.d\.ts$/.test(file);
 }
 
-function stableHash(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-}

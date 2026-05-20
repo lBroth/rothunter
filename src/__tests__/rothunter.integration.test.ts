@@ -1,15 +1,14 @@
 /**
- * Integration test for the full RotHunter pipeline, end-to-end, against a real
- * local mlx_lm.server (Apple Silicon native). Skipped automatically when the
- * server is unreachable.
+ * Integration test for the full RotHunter pipeline, end-to-end, against
+ * a real local LLM (llama.cpp / vLLM / any OpenAI-compatible backend).
+ * Skipped automatically when the server is unreachable.
  *
  * Requires:
- *   - mlx_lm.server running at ROTHUNTER_LLM_BASE_URL (default http://127.0.0.1:8080/v1)
- *   - Model loaded — default mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit
+ *   - LLM server running at ROTHUNTER_LLM_BASE_URL
+ *     (default http://127.0.0.1:8080/v1)
+ *   - A coder-tuned model loaded (Qwen2.5-Coder-7B/14B or similar)
  *
- * Start:
- *   pip install mlx-lm
- *   mlx_lm.server --model mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit --port 8080
+ * Easiest local start: `npm run llm` (auto-detects llama.cpp / docker).
  *
  * The test plants three minimal scenarios in a temp workspace:
  *   1. A clear duplicate (must be reported, LLM should confirm)
@@ -22,7 +21,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { RotHunter } from '../rothunter.js';
-import { createDefaultLlmClient } from '../adapters/mlx-llm.js';
+import { createDefaultLlmClient } from '../adapters/llm.js';
 
 const LLM_BASE_URL = process.env.ROTHUNTER_LLM_BASE_URL ?? 'http://127.0.0.1:8080/v1';
 
@@ -39,7 +38,7 @@ async function isLlmReachable(): Promise<boolean> {
 
 const describeIfLlm = (await isLlmReachable()) ? describe : describe.skip;
 
-describeIfLlm('RotHunter — full pipeline with real MLX-LM (integration)', () => {
+describeIfLlm('RotHunter — full pipeline with real LLM (integration)', () => {
   let workspace: string;
 
   beforeAll(() => {
