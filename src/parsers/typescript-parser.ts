@@ -67,8 +67,33 @@ export class TypeScriptParser {
         );
         project.addSourceFilesAtPaths(absolute);
       } else {
-        const patterns = opts.filePatterns ?? ['**/*.ts', '**/*.tsx'];
-        project.addSourceFilesAtPaths(patterns.map((p) => path.join(opts.workspaceRoot, p)));
+        // Pre-filter at glob time — ts-morph `addSourceFilesAtPaths`
+        // loads every match into memory BEFORE the gitignore filter
+        // below runs. On a workspace with a populated `node_modules/`
+        // (mounted from a host repo, very common with `docker run -v
+        // $(pwd):/workspace`) the parser used to OOM after loading
+        // 60 k+ .ts files. Negative-glob exclusion keeps the always-
+        // ignored dirs out of the load entirely; the .gitignore-based
+        // filter below still trims anything else the operator marked.
+        const includes = opts.filePatterns ?? ['**/*.ts', '**/*.tsx'];
+        const excludes = [
+          '!**/node_modules/**',
+          '!**/dist/**',
+          '!**/build/**',
+          '!**/.next/**',
+          '!**/.nuxt/**',
+          '!**/.svelte-kit/**',
+          '!**/.turbo/**',
+          '!**/.cache/**',
+          '!**/.parcel-cache/**',
+          '!**/.vite/**',
+          '!**/coverage/**',
+          '!**/.git/**',
+        ];
+        const patterns = [...includes, ...excludes];
+        project.addSourceFilesAtPaths(patterns.map((p) => p.startsWith('!')
+          ? `!${path.join(opts.workspaceRoot, p.slice(1))}`
+          : path.join(opts.workspaceRoot, p)));
       }
     }
 

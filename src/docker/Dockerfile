@@ -34,6 +34,11 @@ ENV ROTHUNTER_HOST=0.0.0.0
 ENV ROTHUNTER_WORKSPACE=/workspace
 ENV ROTHUNTER_LLM_BASE_URL=http://rothunter-llm:8080/v1
 ENV ROTHUNTER_LLM_MODEL=bartowski/Qwen2.5-Coder-14B-Instruct-GGUF
+# 4 GB heap. Default V8 limit (~2 GB on 64-bit) crashed during a
+# large monorepo scan (60 k+ ts files in node_modules pre-fix; even
+# post-fix, a real codebase with ~5 k user files + Project type
+# graph can spike near the default cap).
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 COPY package.json package-lock.json ./
 # Production deps only, plus tsx (dev dep in package.json but the runtime
