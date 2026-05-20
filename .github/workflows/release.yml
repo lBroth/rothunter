@@ -15,6 +15,12 @@ jobs:
   npm-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # npm publish needs a valid `NPM_TOKEN` repo secret of type
+    # "Automation" with publish rights on the package name. Until that's
+    # in place the docker-publish job carries the release on its own,
+    # so a missing/invalid token here does not block the rest of the
+    # release workflow.
+    continue-on-error: true
     permissions:
       contents: read
       id-token: write
