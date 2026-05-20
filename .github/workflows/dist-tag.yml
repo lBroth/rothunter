@@ -1,0 +1,38 @@
+name: npm dist-tag
+
+# Manual one-off action to move an npm dist-tag (e.g. flip `latest`
+# from a stale 1.0.0-rc.1 onto a newer 1.0.0-rc.N, or promote the
+# `next` channel into `latest` on GA cut). Triggered ad-hoc by a
+# maintainer via `gh workflow run` or the Actions web UI.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to point the tag at (e.g. 1.0.0-rc.4)'
+        required: true
+        type: string
+      tag:
+        description: 'dist-tag to move (e.g. latest / next / beta)'
+        required: true
+        default: latest
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  dist-tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Move dist-tag
+        run: |
+          npm dist-tag add "@lbroth/rothunter@${{ inputs.version }}" "${{ inputs.tag }}"
+          npm dist-tag ls @lbroth/rothunter
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
