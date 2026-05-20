@@ -706,16 +706,55 @@ async function runCrossWorkspaceRaceDetectors(
   // Common root for all workspaces — used so detector evidence paths
   // come out as `packages/<pkg>/src/...` instead of an absolute path.
   const root = commonAncestor(workspaces.map((w) => w.rootAbs));
+  // Map each workspace's absolute path (made relative to `root`) to
+  // the workspace name. Used to bucket finding evidence per workspace
+  // so we can drop intra-workspace findings — those are already
+  // emitted by the per-workspace pass and would otherwise double-count.
+  const wsByRelRoot = new Map<string, string>();
+  for (const ws of workspaces) {
+    const rel = path.relative(root, ws.rootAbs);
+    wsByRelRoot.set(rel === '' ? '.' : rel, ws.name);
+  }
   const out: Finding[] = [];
   emit({ state: 'detecting', detector: 'cross-shared-db-write' });
   out.push(
-    ...detectSharedDbWrites({ workspaceRoot: root, files: [], project }).map(tagCross),
+    ...detectSharedDbWrites({ workspaceRoot: root, files: [], project })
+      .filter((f) => spansMultipleWorkspaces(f, wsByRelRoot))
+      .map(tagCross),
   );
   emit({ state: 'detecting', detector: 'cross-api-race' });
   out.push(
-    ...detectApiRaces({ workspaceRoot: root, files: [], project }).map(tagCross),
+    ...detectApiRaces({ workspaceRoot: root, files: [], project })
+      .filter((f) => spansMultipleWorkspaces(f, wsByRelRoot))
+      .map(tagCross),
   );
   return out;
+}
+
+/**
+ * True when the finding's evidence covers ≥ 2 distinct workspaces.
+ * Used to keep the cross-workspace pass from re-emitting findings the
+ * per-workspace pass already produced — those have all their evidence
+ * under a single workspace name and would otherwise show up twice
+ * (once workspace-namespaced, once with the `cross-ws:` prefix).
+ */
+function spansMultipleWorkspaces(
+  finding: Finding,
+  wsByRelRoot: ReadonlyMap<string, string>,
+): boolean {
+  const wsHit = new Set<string>();
+  for (const ev of finding.evidence) {
+    const file = ev.file.split('\\').join('/');
+    for (const [relRoot, name] of wsByRelRoot) {
+      const prefix = relRoot === '.' ? '' : `${relRoot}/`;
+      if (relRoot === '.' || file.startsWith(prefix)) {
+        wsHit.add(name);
+        break;
+      }
+    }
+    if (wsHit.size >= 2) return true;
+  }
+  return wsHit.size >= 2;
 }
 
 function tagCross(f: Finding): Finding {

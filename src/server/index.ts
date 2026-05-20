@@ -591,6 +591,26 @@ app.post<{ Params: { fp: string } }>('/api/findings/:fp/rerun', async (req, repl
     return reply.code(422).send({ status: 'unsupported', reason: 'finding has no file evidence to re-check' });
   }
 
+  // Multi-workspace findings carry workspace-prefixed paths
+  // (e.g. `service-a/src/foo.ts`) that the single-workspace parser
+  // would interpret as literal paths under the monorepo root and
+  // fail to find. Detect the prefix shape and refuse — the rerun
+  // path doesn't support cross-workspace findings yet, but at
+  // least we surface a clear error instead of an incorrect
+  // "resolved" verdict.
+  const looksMultiWorkspace = filesFromEvidence.some((f) => {
+    const head = f.split('/')[0] ?? '';
+    if (!head) return false;
+    const candidate = path.join(owningScan!.workspaceRoot, head);
+    return !existsSync(candidate);
+  });
+  if (looksMultiWorkspace) {
+    return reply.code(422).send({
+      status: 'unsupported',
+      reason: 'single-finding rerun does not support multi-workspace findings yet — kick off a full scan to refresh this finding',
+    });
+  }
+
   // Re-run just this detector against just the evidence files.
   const rothunter = new RotHunter();
   let result;
@@ -657,6 +677,9 @@ app.get('/api/scans', async () => {
 });
 
 app.get<{ Params: { scanId: string } }>('/api/scans/:scanId', async (req, reply) => {
+  if (!SCAN_ID_RE.test(req.params.scanId)) {
+    return reply.code(400).send({ error: 'invalid scan id' });
+  }
   const ws = getWorkspaceRoot();
   const live = scans.get(req.params.scanId);
   // Workspace-scope the lookup. The in-memory `scans` Map is global,
@@ -705,6 +728,9 @@ function repartitionScanRecord(record: ScanRecord, ws: string): ScanRecord {
  * (p95 climbing scan-over-scan).
  */
 app.get<{ Params: { scanId: string } }>('/api/scans/:scanId/llm-stats', async (req, reply) => {
+  if (!SCAN_ID_RE.test(req.params.scanId)) {
+    return reply.code(400).send({ error: 'invalid scan id' });
+  }
   let record = scans.get(req.params.scanId);
   if (!record) {
     const file = path.join(getWorkspaceRoot(), '.rothunter', 'scans', `${req.params.scanId}.json`);
@@ -724,6 +750,12 @@ app.get<{ Params: { scanId: string } }>('/api/scans/:scanId/llm-stats', async (r
 app.get<{ Params: { scanId: string }; Querystring: { vs?: string } }>(
   '/api/scans/:scanId/diff',
   async (req, reply) => {
+    if (!SCAN_ID_RE.test(req.params.scanId)) {
+      return reply.code(400).send({ error: 'invalid scan id' });
+    }
+    if (req.query.vs && !SCAN_ID_RE.test(req.query.vs)) {
+      return reply.code(400).send({ error: 'invalid vs scan id' });
+    }
     const live = scans.get(req.params.scanId);
     let current: ScanRecord | undefined = live;
     if (!current) {
@@ -769,6 +801,9 @@ app.get<{ Params: { scanId: string }; Querystring: { vs?: string } }>(
 
 app.get<{ Params: { scanId: string } }>('/api/scans/:scanId/stream', (req, reply) => {
   const { scanId } = req.params;
+  if (!SCAN_ID_RE.test(scanId)) {
+    return reply.code(400).send({ error: 'invalid scan id' });
+  }
   // Refuse to stream a scan that belongs to a different workspace.
   // Without this the LiveScanBanner on workspace B could subscribe to
   // a scan still running against workspace A (the scanId is reachable
@@ -946,6 +981,9 @@ app.get<{ Querystring: { window?: string } }>('/api/scans/series', async (req) =
 
 app.post<{ Params: { scanId: string } }>('/api/scans/:scanId/cancel', async (req, reply) => {
   const { scanId } = req.params;
+  if (!SCAN_ID_RE.test(scanId)) {
+    return reply.code(400).send({ error: 'invalid scan id' });
+  }
   const record = scans.get(scanId);
   if (!record) return reply.code(404).send({ error: 'scan not found' });
   if (record.state === 'done' || record.state === 'error') {
@@ -974,6 +1012,13 @@ app.post<{ Params: { scanId: string } }>('/api/scans/:scanId/cancel', async (req
  */
 app.delete<{ Params: { scanId: string } }>('/api/scans/:scanId', async (req, reply) => {
   const { scanId } = req.params;
+  // Strict allow-list for the scan id shape (`scan_<base36-ts>_<rand>`).
+  // `req.params.scanId` lands directly in a `path.join` below — without
+  // validation a request like `../../../etc/passwd` would unlink an
+  // arbitrary file the process can write.
+  if (!SCAN_ID_RE.test(scanId)) {
+    return reply.code(400).send({ error: 'invalid scan id' });
+  }
   const live = scans.get(scanId);
   if (live && live.state !== 'done' && live.state !== 'error') {
     return reply.code(409).send({ error: 'scan still running — cancel first' });
@@ -987,6 +1032,13 @@ app.delete<{ Params: { scanId: string } }>('/api/scans/:scanId', async (req, rep
   scanHistoryCache.delete(getWorkspaceRoot());
   return { ok: true };
 });
+
+/**
+ * Stable scan-id shape emitted by `startScan`: `scan_<base36-ts>_<rand>`.
+ * Used as a strict allow-list anywhere `req.params.scanId` reaches the
+ * filesystem, to keep path traversal off the table.
+ */
+const SCAN_ID_RE = /^scan_[a-z0-9]+_[a-z0-9]+$/i;
 
 /**
  * POST /api/findings/:fp/false-positive — mark a finding as a false
@@ -1375,7 +1427,15 @@ app.get<{ Params: { fp: string }; Querystring: { context?: string } }>(
     if (!finding) return reply.code(404).send({ error: 'finding not found' });
     const evidence = finding.evidence?.[0];
     if (!evidence) return { finding, codeWindow: null };
-    const filePath = path.join(getWorkspaceRoot(), evidence.file);
+    // Evidence paths come from a detector run against this workspace,
+    // but the scan record is read off disk and could be tampered with
+    // (or, in multi-workspace mode, point at a sibling repo). Resolve
+    // against the workspace root and refuse anything that escapes.
+    const ws = path.resolve(getWorkspaceRoot());
+    const filePath = path.resolve(ws, evidence.file);
+    if (!filePath.startsWith(ws + path.sep) && filePath !== ws) {
+      return { finding, codeWindow: null };
+    }
     if (!existsSync(filePath)) return { finding, codeWindow: null };
     const fullText = await fs.readFile(filePath, 'utf-8');
     const lines = fullText.split(/\r?\n/);
