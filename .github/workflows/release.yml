@@ -39,7 +39,20 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        # Pre-release tags (e.g. `1.0.0-rc.1`) MUST be published under
+        # a non-`latest` dist-tag so they don't shadow the stable
+        # release. Derive `next` for `-rc.*`, `beta` for `-beta.*`,
+        # otherwise default to `latest`.
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          case "$VERSION" in
+            *-rc.*|*-next.*) TAG=next ;;
+            *-beta.*)        TAG=beta ;;
+            *-alpha.*)       TAG=alpha ;;
+            *)               TAG=latest ;;
+          esac
+          echo "Publishing $VERSION as dist-tag '$TAG'"
+          npm publish --provenance --access public --tag "$TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
