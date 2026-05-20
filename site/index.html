@@ -345,36 +345,52 @@ Shared API write: `PUT /api/inventory/:param`
       Self-hosted in <span class="italic text-accent">60 seconds.</span>
     </h2>
 
-    <div class="grid md:grid-cols-2 gap-6">
-      <div class="rounded-lg border border-border bg-panel overflow-hidden">
+    <div class="grid md:grid-cols-3 gap-6">
+      <!-- docker run — simplest path -->
+      <div class="rounded-lg border border-accent/50 bg-panel overflow-hidden glow">
         <header class="px-4 py-3 border-b border-border-soft flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-accent"></span>
-          <span class="font-mono text-[11px] text-ink">native (recommended)</span>
+          <span class="font-mono text-[11px] text-ink">docker run (fastest)</span>
         </header>
-        <pre class="p-5 text-[12.5px] leading-relaxed text-ink/90"><code><span class="text-muted"># 1. install llama.cpp (macOS)</span>
+        <pre class="p-5 text-[12px] leading-relaxed text-ink/90"><code><span class="text-muted"># one-liner: pull image, mount your repo</span>
+docker run --rm -p 3000:3000 \
+  -v $(pwd):/workspace \
+  -e ROTHUNTER_LLM_BASE_URL=$LLM_URL \
+  ghcr.io/lbroth/rothunter:latest
+
+<span class="text-muted"># open the dashboard</span>
+open http://localhost:3000</code></pre>
+      </div>
+
+      <!-- native -->
+      <div class="rounded-lg border border-border bg-panel overflow-hidden">
+        <header class="px-4 py-3 border-b border-border-soft flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-low"></span>
+          <span class="font-mono text-[11px] text-ink">native (full stack)</span>
+        </header>
+        <pre class="p-5 text-[12px] leading-relaxed text-ink/90"><code><span class="text-muted"># includes local llama.cpp + UI</span>
 brew install llama.cpp
 
-<span class="text-muted"># 2. clone + setup</span>
 git clone https://github.com/lBroth/rothunter
 cd rothunter
 npm run setup
 
-<span class="text-muted"># 3. boot (server + UI + LLM)</span>
+<span class="text-muted"># server + UI + LLM</span>
 npm run dev:full</code></pre>
       </div>
 
+      <!-- docker compose -->
       <div class="rounded-lg border border-border bg-panel overflow-hidden">
         <header class="px-4 py-3 border-b border-border-soft flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-low"></span>
-          <span class="font-mono text-[11px] text-ink">docker</span>
+          <span class="font-mono text-[11px] text-ink">docker-compose (with LLM sidecar)</span>
         </header>
-        <pre class="p-5 text-[12.5px] leading-relaxed text-ink/90"><code><span class="text-muted"># scan a repo via docker-compose stack</span>
+        <pre class="p-5 text-[12px] leading-relaxed text-ink/90"><code><span class="text-muted"># compose ships LLM sidecar (~9 GB model)</span>
 git clone https://github.com/lBroth/rothunter
 cd rothunter
-ROTHUNTER_WORKSPACE_HOST=/path/to/my-app \
+ROTHUNTER_WORKSPACE_HOST=/path/to/repo \
   npm run docker
 
-<span class="text-muted"># open the dashboard</span>
 open http://localhost:3000</code></pre>
       </div>
     </div>
