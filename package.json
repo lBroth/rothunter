@@ -1,6 +1,6 @@
 {
   "name": "@lbroth/rothunter",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.2",
   "description": "Self-hosted code-hygiene engine for TypeScript / JavaScript codebases. Deterministic detectors + local LLM verdicts + dashboard.",
   "license": "MIT",
   "author": "lBroth",
@@ -32,6 +32,9 @@
       "default": "./dist/rothunter.js"
     }
   },
+  "bin": {
+    "rothunter": "./dist/server/index.js"
+  },
   "files": [
     "dist",
     "scripts/start-llm.mjs",
@@ -43,8 +46,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "tsc",
-    "build:ui": "cd src/ui && npm install && npm run build",
+    "build": "tsc && npm run build:ui",
+    "build:ui": "cd src/ui && npm install && npm run build -- --outDir ../../dist/ui --emptyOutDir",
+    "build:server": "tsc",
     "prepublishOnly": "npm run build",
     "setup": "npm install && cd src/ui && npm install",
     "server": "tsx watch src/server/index.ts",

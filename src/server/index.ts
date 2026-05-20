@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // Fastify HTTP API + SSE scan stream + static UI host.
 // Scans + findings persist under <workspace>/.rothunter/ (one JSON file per scan).
 import Fastify from 'fastify';
@@ -63,7 +64,26 @@ initWorkspaceStore(bootCandidate);
 
 const SETTINGS: AppSettings = readSettings();
 
-const UI_DIST = path.resolve(import.meta.dirname, '../ui/dist');
+/**
+ * Resolve the UI bundle location, supporting both layouts:
+ *   - dev / clone-and-run: `dist/server/index.js` → `../../src/ui/dist`
+ *   - npm-installed:       `dist/server/index.js` → `../ui` (vite emits there
+ *     when `--outDir ../../dist/ui` is set at build time).
+ * The first existing directory wins. When neither is present the server
+ * still boots — the dashboard 404s but the API is fully usable.
+ */
+const UI_DIST = (() => {
+  const here = import.meta.dirname;
+  const candidates = [
+    path.resolve(here, '../ui'),         // npm-installed layout (preferred)
+    path.resolve(here, '../../src/ui/dist'), // local dev / clone-and-run
+    path.resolve(here, '../ui/dist'),    // legacy fallback
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return candidates[0]!;
+})();
 
 import {
   scans,
