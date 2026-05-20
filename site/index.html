@@ -9,7 +9,9 @@
 <meta property="og:description" content="24 detectors + local LLM verdicts + cross-service race detection across monorepo packages. Self-hosted, MIT licensed." />
 <meta property="og:type" content="website" />
 <link rel="icon" type="image/png" href="logo.png" />
-<script src="https://cdn.tailwindcss.com"></script>
+<!-- Tailwind vendored locally (CDN script frozen at 3.4.16) so the
+     landing page has zero third-party supply-chain dependency. -->
+<script src="./vendor/tailwind-3.4.16.js"></script>
 <script>
   tailwind.config = {
     theme: {

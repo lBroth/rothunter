@@ -34,7 +34,16 @@ export function makeSourceReader(workspaceRoot: string, project?: Project): Sour
 
 function readFromDisk(workspaceRoot: string, rel: string): string | null {
   try {
-    return readFileSync(path.resolve(workspaceRoot, rel), 'utf-8');
+    const root = path.resolve(workspaceRoot);
+    const resolved = path.resolve(root, rel);
+    // Refuse anything that escapes the workspace root via `..` /
+    // absolute / symlink before it reaches `readFileSync`. Callers
+    // are internal today, but a defensive guard here keeps any
+    // future detector or test fixture from punching through.
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      return null;
+    }
+    return readFileSync(resolved, 'utf-8');
   } catch {
     return null;
   }

@@ -24,15 +24,41 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..');
-const MODEL_LLAMACPP_REPO = process.env.ROTHUNTER_LLM_MODEL ?? 'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF';
-const MODEL_LLAMACPP_FILE = process.env.ROTHUNTER_LLM_MODEL_FILE ?? 'Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf';
-const PORT = process.env.ROTHUNTER_LLM_PORT ?? '8080';
+
+/**
+ * Reject env values that would let a hostile environment inject extra
+ * llama-server flags via the `spawn(..., [args])` argv. `spawn` does
+ * not invoke a shell, so true shell injection is already blocked, but
+ * a value starting with `-` would still be interpreted as a flag
+ * (e.g. setting `ROTHUNTER_LLM_PORT='--alias --rpc 0.0.0.0:5000'`).
+ * Tight allow-lists per env: model repo / file paths, integer port,
+ * IPv4-ish host.
+ */
+function requireEnv(name, fallback, pattern) {
+  const v = process.env[name] ?? fallback;
+  if (!pattern.test(v)) {
+    console.error(`[llm] refusing to launch — env ${name}=${JSON.stringify(v)} does not match ${pattern}`);
+    process.exit(1);
+  }
+  return v;
+}
+const MODEL_LLAMACPP_REPO = requireEnv(
+  'ROTHUNTER_LLM_MODEL',
+  'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF',
+  /^[A-Za-z0-9._\-/]+$/,
+);
+const MODEL_LLAMACPP_FILE = requireEnv(
+  'ROTHUNTER_LLM_MODEL_FILE',
+  'Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf',
+  /^[A-Za-z0-9._\-/]+$/,
+);
+const PORT = requireEnv('ROTHUNTER_LLM_PORT', '8080', /^\d{1,5}$/);
 // Loopback by default — the llama-server endpoint has no auth, so
 // `--host 0.0.0.0` would let anyone on the LAN use the GPU and read
 // the prompts we send. Override with `ROTHUNTER_LLM_HOST=0.0.0.0`
 // only when you intentionally want LAN access (and ideally only
 // behind a reverse proxy / VPN).
-const HOST = process.env.ROTHUNTER_LLM_HOST ?? '127.0.0.1';
+const HOST = requireEnv('ROTHUNTER_LLM_HOST', '127.0.0.1', /^[0-9.:a-fA-F]+$/);
 
 function has(cmd) {
   return spawnSync('which', [cmd], { stdio: 'ignore' }).status === 0;
