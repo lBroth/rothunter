@@ -1,0 +1,25 @@
+# RotHunter path-ignore file.
+#
+# Standard `.gitignore` syntax — patterns here are layered on TOP of
+# `.gitignore` to exclude paths from rothunter scans without touching
+# what git sees. Use this for files that ARE checked into git but
+# rothunter shouldn't analyse (fixtures, generated SDKs, vendored
+# third-party copies, large data dumps).
+#
+# To suppress an INDIVIDUAL FINDING by fingerprint (not a path),
+# write to `.rothunter/snoozed-fingerprints.txt` instead.
+#
+# Examples:
+#   # Detector own-test fixtures — flagged-by-design code samples.
+#   src/__fixtures__/
+#
+#   # Vendored SDK clients
+#   packages/*/vendor/
+#
+#   # Large generated CSV fixtures
+#   data/large/*.csv
+
+# Detector own-test fixtures — these files exist to TRIGGER detectors
+# (intentional duplicates / races / mutations) so rothunter shouldn't
+# treat its own bait as a real finding.
+src/__fixtures__/

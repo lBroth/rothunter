@@ -145,3 +145,10 @@ vite.config.ts.timestamp-*
 # Private / internal design + planning docs (gitignored)
 /private/
 .DS_Store
+
+# rothunter runtime state — scan history, FP store, kept-open, marked-to-fix
+.rothunter/
+
+# Editor / OS junk
+.DS_Store
+*.swp

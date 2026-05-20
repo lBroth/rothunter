@@ -16,7 +16,7 @@
 services:
   rothunter-llm:
     # CPU image by default — runs on macOS / Linux / Windows without GPU
-    # drivers. ~3-15s per Tier-3 verdict on a modern laptop. For NVIDIA
+    # drivers. ~3-15s per LLM verdict on a modern laptop. For NVIDIA
     # GPUs swap to `ghcr.io/ggml-org/llama.cpp:server-cuda` and uncomment
     # the deploy.resources block below.
     image: ghcr.io/ggml-org/llama.cpp:server
