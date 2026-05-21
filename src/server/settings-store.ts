@@ -33,9 +33,26 @@ export interface AppSettings {
 
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
 
+// Detectors fully covered by a standard ESLint rule (or tsconfig strict).
+// Off by default — users opt in via Settings if their project doesn't
+// enable the equivalent lint rule. silent-catch / todo-comments /
+// mutable-globals stay ON because no ESLint rule covers them with the
+// same scope (silent-catch flags console-only + bare-return catches that
+// no-empty does not; todo-comments scans non-TS files; no ESLint rule
+// flags top-level reassigned `let` — prefer-const flags the opposite case).
+const LINT_OVERLAP_DEFAULT_OFF = new Set<string>([
+  'public-any', // @typescript-eslint/no-explicit-any
+  'long-function', // max-lines-per-function
+  'long-file', // max-lines
+  'deep-nesting', // max-depth / complexity
+  'magic-numbers', // no-magic-numbers
+  'console-log-prod', // no-console
+  'skip-tests', // jest/no-disabled-tests + jest/no-focused-tests
+]);
+
 function defaultSettings(): AppSettings {
   const detectors: Record<string, boolean> = {};
-  for (const id of DETECTOR_IDS) detectors[id] = true;
+  for (const id of DETECTOR_IDS) detectors[id] = !LINT_OVERLAP_DEFAULT_OFF.has(id);
   // Auto-tune LLM concurrency: default to half the CPU cores, clamped
   // to [1, 8]. Most laptops land at 4 — a sane balance between local
   // llama.cpp throughput and OS responsiveness during a scan.
