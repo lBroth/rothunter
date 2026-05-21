@@ -26,6 +26,7 @@ export const DETECTOR_IDS = [
   'public-any',
   'hot-hub-file',
   're-export-shadow',
+  'default-export-name-drift',
   // Single-workspace only (file-walking, git, or ts-morph Project-bound)
   'dead-handler',
   'mutation',
