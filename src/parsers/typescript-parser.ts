@@ -155,7 +155,9 @@ export class TypeScriptParser {
       for (const decl of sourceFile.getExportDeclarations()) {
         const specifier = decl.getModuleSpecifierValue();
         if (!specifier) continue;
-        const named = decl.getNamedExports().map((ne) => ne.getName());
+        const specifiers = decl.getNamedExports();
+        const named = specifiers.map((ne) => ne.getName());
+        const localNames = specifiers.map((ne) => ne.getAliasNode()?.getText() ?? ne.getName());
         const isStarReExport = decl.isNamespaceExport() && named.length === 0;
         imports.push({
           source: relativeFile,
@@ -165,6 +167,7 @@ export class TypeScriptParser {
           isReExport: true,
           isStarReExport,
           reExportNames: named,
+          reExportLocalNames: localNames,
         });
       }
       // Dynamic imports: `await import('./x')` or `import('./x').then(...)`.

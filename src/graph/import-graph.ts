@@ -44,6 +44,13 @@ export interface ImportRecord {
   isStarReExport: boolean;
   /** Original exported names mentioned in the re-export (`export { a as b } from` → ['a']). */
   reExportNames?: string[];
+  /**
+   * Final names published by this re-export (`export { a as b } from` → ['b']).
+   * Parallel to `reExportNames`. Used by re-export-shadow to detect ambiguous
+   * exits from the barrel: two re-exports can land on the same RHS name even
+   * when their LHS origins differ.
+   */
+  reExportLocalNames?: string[];
 }
 
 export function buildImportGraph(records: ImportRecord[]): ImportGraph {
