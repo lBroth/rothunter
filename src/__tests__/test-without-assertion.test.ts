@@ -25,7 +25,7 @@ describe('test-without-assertion detector', () => {
         "import { describe, it } from '@jest/globals';\n" +
         "describe('foo', () => {\n" +
         "  it('does something', () => {\n" +
-        "    const x = 1 + 1;\n" +
+        '    const x = 1 + 1;\n' +
         '    void x;\n' +
         '  });\n' +
         '});\n',
@@ -59,16 +59,13 @@ describe('test-without-assertion detector', () => {
   it('does NOT flag node:assert / strict / chai / sinon style', async () => {
     const root = setup({
       'src/__tests__/a.test.ts':
-        "import assert from 'node:assert';\n" +
-        "it('a', () => { assert.equal(1, 1); });\n",
+        "import assert from 'node:assert';\n" + "it('a', () => { assert.equal(1, 1); });\n",
       'src/__tests__/b.test.ts':
         "import { strict } from 'node:assert';\n" +
         "it('b', () => { strict.deepEqual({a:1}, {a:1}); });\n",
       'src/__tests__/c.test.ts':
-        "import chai from 'chai';\n" +
-        "it('c', () => { chai.expect(1).to.equal(1); });\n",
-      'src/__tests__/d.test.ts':
-        "it('d', () => { mock.calledWith('x'); });\n",
+        "import chai from 'chai';\n" + "it('c', () => { chai.expect(1).to.equal(1); });\n",
+      'src/__tests__/d.test.ts': "it('d', () => { mock.calledWith('x'); });\n",
     });
     try {
       const findings = run(root, [
@@ -155,7 +152,7 @@ describe('test-without-assertion detector', () => {
     const root = setup({
       'src/foo.ts':
         "// Looks like a test but isn't in a test file.\n" +
-        "function it(name: string, fn: () => void) { fn(); }\n" +
+        'function it(name: string, fn: () => void) { fn(); }\n' +
         "it('not a real test', () => { const x = 1; void x; });\n",
     });
     try {
@@ -198,8 +195,7 @@ describe('test-without-assertion detector', () => {
 
   it('produces a stable fingerprint per (file, line, title)', async () => {
     const root = setup({
-      'src/__tests__/fp.test.ts':
-        "it('does something', () => { const x = 1; void x; });\n",
+      'src/__tests__/fp.test.ts': "it('does something', () => { const x = 1; void x; });\n",
     });
     try {
       const a = run(root, ['src/__tests__/fp.test.ts']);

@@ -14,9 +14,7 @@ export interface TestWithoutAssertionDetectorInput extends FileWalkingDetectorIn
 //
 // `.skip` / `.only` / `.todo` callsites are deliberately excluded —
 // `skip-tests` owns those, and `.todo` is an intentional placeholder.
-export function detectTestsWithoutAssertion(
-  input: TestWithoutAssertionDetectorInput,
-): Finding[] {
+export function detectTestsWithoutAssertion(input: TestWithoutAssertionDetectorInput): Finding[] {
   const read = makeSourceReader(input.workspaceRoot, input.project);
   const findings: Finding[] = [];
   for (const rel of input.files) {
