@@ -68,8 +68,7 @@ export function detectUnsanitizedInputToSink(
         severity: 'high',
         confidence: 0.7,
         layer: 1,
-        title:
-          `Unsanitised input \`${hit.taintedVar}\` flows into ${hit.sinkLabel} in ${hit.file}:${hit.line}`,
+        title: `Unsanitised input \`${hit.taintedVar}\` flows into ${hit.sinkLabel} in ${hit.file}:${hit.line}`,
         description:
           `\`${hit.taintedVar}\` is bound from \`${hit.source}\` and reaches \`${hit.sink}\` at ${hit.file}:${hit.line} ` +
           `without going through a parser / parameterised query / shell-escape helper. ` +
@@ -144,8 +143,14 @@ const SINK_PATTERNS: SinkPattern[] = [
   { re: /\b((?:db|client|connection|conn|pool)\s*\.\s*query)\s*\(/g, label: 'a raw SQL query' },
   { re: /\b(prisma\s*\.\s*\$queryRaw(?:Unsafe)?)\s*\(/g, label: 'a Prisma raw query' },
   { re: /\b(prisma\s*\.\s*\$executeRaw(?:Unsafe)?)\s*\(/g, label: 'a Prisma raw execute' },
-  { re: /\b((?:child_process\s*\.\s*)?(?:exec|execSync|spawn|spawnSync|execFile|execFileSync))\s*\(/g, label: 'a process-exec sink' },
-  { re: /\b(fs(?:\s*\.\s*promises)?\s*\.\s*(?:readFile|readFileSync|writeFile|writeFileSync|appendFile|appendFileSync|unlink|unlinkSync|createReadStream|createWriteStream|rm|rmSync))\s*\(/g, label: 'an fs path sink' },
+  {
+    re: /\b((?:child_process\s*\.\s*)?(?:exec|execSync|spawn|spawnSync|execFile|execFileSync))\s*\(/g,
+    label: 'a process-exec sink',
+  },
+  {
+    re: /\b(fs(?:\s*\.\s*promises)?\s*\.\s*(?:readFile|readFileSync|writeFile|writeFileSync|appendFile|appendFileSync|unlink|unlinkSync|createReadStream|createWriteStream|rm|rmSync))\s*\(/g,
+    label: 'an fs path sink',
+  },
   { re: /\b(eval)\s*\(/g, label: '`eval`' },
   { re: /\bnew\s+(Function)\s*\(/g, label: '`new Function`' },
   { re: /\b(import)\s*\(/g, label: 'dynamic `import()`' },
@@ -153,11 +158,7 @@ const SINK_PATTERNS: SinkPattern[] = [
 
 // Sink calls whose argument list interpolates / concatenates a tainted
 // name. We extract just the argument-list slice and check it.
-function findSinkHits(
-  file: string,
-  raw: string,
-  tainted: Map<string, string>,
-): Hit[] {
+function findSinkHits(file: string, raw: string, tainted: Map<string, string>): Hit[] {
   const hits: Hit[] = [];
   for (const pattern of SINK_PATTERNS) {
     pattern.re.lastIndex = 0;
@@ -211,8 +212,9 @@ function anyTaintedReferenced(args: string, tainted: Map<string, string>): strin
     // (`\`${user}\``) or concat (`'… ' + user`).
     const tpl = new RegExp(`\\$\\{[^}]*\\b${escapeRe(name)}\\b[^}]*\\}`).test(args);
     if (tpl) return name;
-    const concat = new RegExp(`['"\`][^'"\`]*['"\`]\\s*\\+\\s*[^,)]*\\b${escapeRe(name)}\\b`).test(args)
-      || new RegExp(`\\b${escapeRe(name)}\\b[^,)]*\\s*\\+\\s*['"\`]`).test(args);
+    const concat =
+      new RegExp(`['"\`][^'"\`]*['"\`]\\s*\\+\\s*[^,)]*\\b${escapeRe(name)}\\b`).test(args) ||
+      new RegExp(`\\b${escapeRe(name)}\\b[^,)]*\\s*\\+\\s*['"\`]`).test(args);
     if (concat) return name;
   }
   return null;

@@ -114,7 +114,7 @@ describe('unsanitized-input-to-sink detector', () => {
   it('flags searchParams.get value reaching a sink', async () => {
     const root = setup({
       'src/route.ts':
-        "export async function GET(request: Request) {\n" +
+        'export async function GET(request: Request) {\n' +
         '  const searchParams = new URL(request.url).searchParams;\n' +
         "  const q = searchParams.get('q');\n" +
         '  return db.query(`SELECT * FROM items WHERE name LIKE ${q}`);\n' +
