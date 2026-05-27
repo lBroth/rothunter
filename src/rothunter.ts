@@ -14,6 +14,7 @@ import { detectApiRaces } from './detectors/api-race.js';
 import { detectBadConfig } from './detectors/bad-config.js';
 import { detectSilentCatches } from './detectors/silent-catch.js';
 import { detectSkipTests } from './detectors/skip-tests.js';
+import { detectTestsWithoutAssertion } from './detectors/test-without-assertion.js';
 import { detectLongFiles } from './detectors/long-file.js';
 import { detectLongFunctions } from './detectors/long-function.js';
 import { detectConsoleLogsInProd } from './detectors/console-log-prod.js';
@@ -909,6 +910,13 @@ async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Findi
   );
   run('skip-tests', () =>
     detectSkipTests({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
+  run('test-without-assertion', () =>
+    detectTestsWithoutAssertion({
+      workspaceRoot: ctx.workspaceRoot,
+      files,
+      project: sharedProject,
+    }),
   );
   run('long-file', () =>
     detectLongFiles({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
