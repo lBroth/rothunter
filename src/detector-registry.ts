@@ -44,6 +44,7 @@ export const DETECTOR_IDS = [
   'unused-deps',
   'similar-functions',
   'todo-comments',
+  'env-var-undeclared',
 ] as const;
 
 export type DetectorId = (typeof DETECTOR_IDS)[number];
@@ -71,6 +72,7 @@ export const MULTI_WORKSPACE_SKIPPED = new Set<DetectorId>([
   'unused-deps',
   'similar-functions',
   'todo-comments',
+  'env-var-undeclared',
 ]);
 
 /**

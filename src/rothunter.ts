@@ -28,6 +28,7 @@ import { detectSimilarFunctions } from './detectors/similar-functions.js';
 import { detectTodoComments } from './detectors/todo-comments.js';
 import { detectReExportShadows } from './detectors/re-export-shadow.js';
 import { detectDefaultExportNameDrift } from './detectors/default-export-name-drift.js';
+import { detectEnvVarUndeclared } from './detectors/env-var-undeclared.js';
 import { TypeScriptParser, type ParseOptions } from './parsers/typescript-parser.js';
 import { TypeNormalizer } from './normalizers/type-normalizer.js';
 import { buildImportGraph, reachableFrom } from './graph/import-graph.js';
@@ -939,6 +940,8 @@ async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Findi
   // todo-comments does its own workspace walk so it picks up Python / Go /
   // shell sources the TS parser skips. No `files` arg by design.
   run('todo-comments', () => detectTodoComments({ workspaceRoot: ctx.workspaceRoot }));
+  run('env-var-undeclared', () =>
+    detectEnvVarUndeclared({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
 
   return findings;
 }
