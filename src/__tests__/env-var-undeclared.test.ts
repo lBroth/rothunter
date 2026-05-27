@@ -175,8 +175,7 @@ describe('env-var-undeclared detector', () => {
   it('respects the rothunter:ignore-env-var-undeclared annotation', async () => {
     const root = setup({
       'src/index.ts':
-        '// rothunter:ignore-env-var-undeclared\n' +
-        'export const u = process.env.INTENTIONAL;\n',
+        '// rothunter:ignore-env-var-undeclared\n' + 'export const u = process.env.INTENTIONAL;\n',
     });
     try {
       const findings = run(root, ['src/index.ts']);

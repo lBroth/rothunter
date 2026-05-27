@@ -54,7 +54,13 @@ export function detectEnvVarUndeclared(input: EnvVarUndeclaredDetectorInput): Fi
     const key = `${u.name}::${u.file}`;
     if (seenUndeclared.has(key)) continue;
     seenUndeclared.add(key);
-    const declSources = declarations.length === 0 ? '(no env declaration files found)' : declarations.map((d) => d.source).filter((s, i, a) => a.indexOf(s) === i).join(', ');
+    const declSources =
+      declarations.length === 0
+        ? '(no env declaration files found)'
+        : declarations
+            .map((d) => d.source)
+            .filter((s, i, a) => a.indexOf(s) === i)
+            .join(', ');
     findings.push({
       detectorId: 'env-var-undeclared',
       severity: 'medium',
@@ -106,8 +112,7 @@ export function detectEnvVarUndeclared(input: EnvVarUndeclaredDetectorInput): Fi
             snippet: `${d.name}=…`,
           },
         ],
-        suggestion:
-          `Remove the unused entry, or — if it's read via dynamic indexing — add a \`// rothunter:ignore-env-var-undeclared\` comment alongside that read.`,
+        suggestion: `Remove the unused entry, or — if it's read via dynamic indexing — add a \`// rothunter:ignore-env-var-undeclared\` comment alongside that read.`,
         fingerprint: `env-var-undeclared-dead:${stableHash(`${d.name}::${d.source}`)}`,
       });
     }
@@ -147,7 +152,11 @@ function collectDeclarations(workspaceRoot: string): EnvDeclaration[] {
   // `.env.local` (machine-local overrides). Read every `.env*.example`,
   // `.env*.sample`, `.env*.template`, and the canonical `.env.example`
   // / `.env.sample` / `.env.template` names.
-  const envFiles = enumerateSourceFiles(workspaceRoot, gitignore, ['.example', '.sample', '.template']);
+  const envFiles = enumerateSourceFiles(workspaceRoot, gitignore, [
+    '.example',
+    '.sample',
+    '.template',
+  ]);
   // The matcher above relies on extension, but `.env.example` has
   // a multi-dot name — fall back to a direct walk of the workspace
   // root for the canonical names.
@@ -197,7 +206,11 @@ function collectDeclarations(workspaceRoot: string): EnvDeclaration[] {
   // line-by-line parse: any `      KEY:` or `      KEY=value` under an
   // `environment:` key counts. The YAML may be valid in shapes we
   // can't parse without a YAML lib, so we accept some recall loss.
-  const composeFiles = findFilesByName(workspaceRoot, gitignore, /^docker-compose(?:\..+)?\.ya?ml$/i);
+  const composeFiles = findFilesByName(
+    workspaceRoot,
+    gitignore,
+    /^docker-compose(?:\..+)?\.ya?ml$/i,
+  );
   for (const rel of composeFiles) {
     const abs = path.join(workspaceRoot, rel);
     let raw: string;
