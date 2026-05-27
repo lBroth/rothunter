@@ -26,6 +26,7 @@ import { detectHotHubFiles } from './detectors/hot-hub-file.js';
 import { detectSimilarFunctions } from './detectors/similar-functions.js';
 import { detectTodoComments } from './detectors/todo-comments.js';
 import { detectReExportShadows } from './detectors/re-export-shadow.js';
+import { detectDefaultExportNameDrift } from './detectors/default-export-name-drift.js';
 import { TypeScriptParser, type ParseOptions } from './parsers/typescript-parser.js';
 import { TypeNormalizer } from './normalizers/type-normalizer.js';
 import { buildImportGraph, reachableFrom } from './graph/import-graph.js';
@@ -218,6 +219,12 @@ export class RotHunter {
     logger.info({ imports: parsed.imports.length }, 'RotHunter: running detector re-export-shadow');
     emit({ state: 'detecting', detector: 're-export-shadow' });
     findings.push(...detectReExportShadows({ symbols, imports: parsed.imports }));
+    logger.info(
+      { symbols: symbols.length },
+      'RotHunter: running detector default-export-name-drift',
+    );
+    emit({ state: 'detecting', detector: 'default-export-name-drift' });
+    findings.push(...detectDefaultExportNameDrift({ symbols, imports: parsed.imports }));
 
     if (!isMulti) {
       // Single-workspace path: paths are already real workspace-relative.
