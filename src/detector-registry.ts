@@ -25,6 +25,7 @@ export const DETECTOR_IDS = [
   'deep-nesting',
   'public-any',
   'hot-hub-file',
+  're-export-shadow',
   // Single-workspace only (file-walking, git, or ts-morph Project-bound)
   'dead-handler',
   'mutation',
