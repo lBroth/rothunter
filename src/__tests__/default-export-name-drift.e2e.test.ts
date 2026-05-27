@@ -28,9 +28,7 @@ describe('default-export-name-drift — full RotHunter pipeline', () => {
     try {
       const rothunter = new RotHunter();
       const result = await rothunter.run({ workspaceRoot: root });
-      const drifts = result.findings.filter(
-        (f) => f.detectorId === 'default-export-name-drift',
-      );
+      const drifts = result.findings.filter((f) => f.detectorId === 'default-export-name-drift');
       expect(drifts).toHaveLength(1);
       expect(drifts[0]!.title).toContain('src/lib.ts');
       expect(drifts[0]!.title).toContain('3 different names');
@@ -51,9 +49,7 @@ describe('default-export-name-drift — full RotHunter pipeline', () => {
     try {
       const rothunter = new RotHunter();
       const result = await rothunter.run({ workspaceRoot: root });
-      const drifts = result.findings.filter(
-        (f) => f.detectorId === 'default-export-name-drift',
-      );
+      const drifts = result.findings.filter((f) => f.detectorId === 'default-export-name-drift');
       expect(drifts).toEqual([]);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
@@ -72,9 +68,7 @@ describe('default-export-name-drift — full RotHunter pipeline', () => {
     try {
       const rothunter = new RotHunter();
       const result = await rothunter.run({ workspaceRoot: root });
-      const drifts = result.findings.filter(
-        (f) => f.detectorId === 'default-export-name-drift',
-      );
+      const drifts = result.findings.filter((f) => f.detectorId === 'default-export-name-drift');
       expect(drifts).toHaveLength(2);
       const titles = drifts.map((f) => f.title);
       expect(titles.some((t) => t.includes('src/user.ts'))).toBe(true);

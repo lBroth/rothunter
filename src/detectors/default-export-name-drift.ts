@@ -50,7 +50,10 @@ export function detectDefaultExportNameDrift(
     if (aliasMap.size < 2) continue;
     const ranked = [...aliasMap.entries()].sort((a, b) => b[1].length - a[1].length);
     const aliasList = ranked
-      .map(([name, sources]) => `\`${name}\` (${sources.length}× — ${sources.slice(0, 2).join(', ')}${sources.length > 2 ? ', …' : ''})`)
+      .map(
+        ([name, sources]) =>
+          `\`${name}\` (${sources.length}× — ${sources.slice(0, 2).join(', ')}${sources.length > 2 ? ', …' : ''})`,
+      )
       .join(', ');
     const defaultSym = defaultSymbolByFile.get(target);
     const declaredName = defaultSym?.name && defaultSym.name !== 'default' ? defaultSym.name : null;

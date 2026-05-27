@@ -76,9 +76,7 @@ describe('default-export-name-drift detector', () => {
 
   it('does NOT flag named-only imports of a default-exporting module', async () => {
     const root = await setupWorkspace({
-      'lib.ts':
-        'export default function main(): void {}\n' +
-        'export function helper(): void {}\n',
+      'lib.ts': 'export default function main(): void {}\n' + 'export function helper(): void {}\n',
       'a.ts': "import { helper } from './lib';\nhelper();\n",
       'b.ts': "import { helper as h } from './lib';\nh();\n",
     });
@@ -171,8 +169,10 @@ describe('default-export-name-drift detector', () => {
     const root = await setupWorkspace({
       'user.ts': 'export default function getUser(): void {}\n',
       'order.ts': 'export default function getOrder(): void {}\n',
-      'a.ts': "import getUser from './user';\nimport getOrder from './order';\ngetUser(); getOrder();\n",
-      'b.ts': "import fetchUser from './user';\nimport fetchOrder from './order';\nfetchUser(); fetchOrder();\n",
+      'a.ts':
+        "import getUser from './user';\nimport getOrder from './order';\ngetUser(); getOrder();\n",
+      'b.ts':
+        "import fetchUser from './user';\nimport fetchOrder from './order';\nfetchUser(); fetchOrder();\n",
     });
     try {
       const { parsed, symbols } = await scan(root);
