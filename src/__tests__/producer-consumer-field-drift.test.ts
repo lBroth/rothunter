@@ -123,8 +123,7 @@ describe('producer-consumer-field-drift detector', () => {
     const root = setup({
       'src/server.ts':
         "app.post('/api/items', (req, res) => { const { sku, qty } = req.body; void sku; void qty; });\n",
-      'src/client.ts':
-        "axios.post('/api/items', { sku: 'X' });\n",
+      'src/client.ts': "axios.post('/api/items', { sku: 'X' });\n",
     });
     try {
       const findings = run(root, ['src/server.ts', 'src/client.ts']);
@@ -160,8 +159,7 @@ describe('producer-consumer-field-drift detector', () => {
       'src/server.ts':
         '// rothunter:ignore-producer-consumer-field-drift\n' +
         "app.post('/api/users', (req, res) => { const { a, b } = req.body; void a; void b; });\n",
-      'src/client.ts':
-        "fetch('/api/users', { method: 'POST', body: JSON.stringify({ a: 1 }) });\n",
+      'src/client.ts': "fetch('/api/users', { method: 'POST', body: JSON.stringify({ a: 1 }) });\n",
     });
     try {
       const findings = run(root, ['src/server.ts', 'src/client.ts']);
@@ -175,8 +173,7 @@ describe('producer-consumer-field-drift detector', () => {
     const root = setup({
       'src/server.ts':
         "app.post('/api/users', (req, res) => { const { a, b } = req.body; void a; void b; });\n",
-      'src/client.ts':
-        "fetch('/api/users', { method: 'POST', body: JSON.stringify({ a: 1 }) });\n",
+      'src/client.ts': "fetch('/api/users', { method: 'POST', body: JSON.stringify({ a: 1 }) });\n",
     });
     try {
       const a = run(root, ['src/server.ts', 'src/client.ts']);

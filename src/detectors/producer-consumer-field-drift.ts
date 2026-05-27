@@ -179,7 +179,7 @@ function extractClientCalls(file: string, raw: string, out: ClientWrites[]): voi
   FETCH_RE.lastIndex = 0;
   for (const m of raw.matchAll(FETCH_RE)) {
     const url = stripTemplatePlaceholders(m[2]!);
-    const optsBlob = (m[3] ?? '');
+    const optsBlob = m[3] ?? '';
     const method = inferMethod(optsBlob);
     if (method == null) continue; // not a write-shape fetch we can analyse
     const fields = extractBodyFieldsFromOpts(optsBlob);
