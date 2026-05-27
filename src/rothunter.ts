@@ -32,6 +32,7 @@ import { detectEnvVarUndeclared } from './detectors/env-var-undeclared.js';
 import { detectPackageExportMismatch } from './detectors/package-export-mismatch.js';
 import { detectSchemaShapeDivergence } from './detectors/schema-shape-divergence.js';
 import { detectProducerConsumerFieldDrift } from './detectors/producer-consumer-field-drift.js';
+import { detectUnsanitizedInputToSink } from './detectors/unsanitized-input-to-sink.js';
 import { TypeScriptParser, type ParseOptions } from './parsers/typescript-parser.js';
 import { TypeNormalizer } from './normalizers/type-normalizer.js';
 import { buildImportGraph, reachableFrom } from './graph/import-graph.js';
@@ -954,6 +955,13 @@ async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Findi
   );
   run('producer-consumer-field-drift', () =>
     detectProducerConsumerFieldDrift({
+      workspaceRoot: ctx.workspaceRoot,
+      files,
+      project: sharedProject,
+    }),
+  );
+  run('unsanitized-input-to-sink', () =>
+    detectUnsanitizedInputToSink({
       workspaceRoot: ctx.workspaceRoot,
       files,
       project: sharedProject,
