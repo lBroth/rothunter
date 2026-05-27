@@ -8,7 +8,13 @@ const HOME = os.homedir();
 const CONFIG_DIR = path.join(HOME, '.rothunter');
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
 
+// IDs the store ships OFF by default. Includes the 8 new cross-file /
+// heuristic detectors so they land OFF the moment their PRs rebase on
+// this commit and add their id to DETECTOR_IDS. While those PRs are
+// still in flight the entries here are no-ops — the assertions below
+// skip any id that isn't yet present in DETECTOR_IDS.
 const LINT_OVERLAP_EXPECTED_OFF = [
+  // ESLint / tsc overlap
   'public-any',
   'long-function',
   'long-file',
@@ -16,6 +22,15 @@ const LINT_OVERLAP_EXPECTED_OFF = [
   'magic-numbers',
   'console-log-prod',
   'skip-tests',
+  // New cross-file / heuristic detectors — conservative ship
+  're-export-shadow',
+  'default-export-name-drift',
+  'test-without-assertion',
+  'env-var-undeclared',
+  'package-export-mismatch',
+  'schema-shape-divergence',
+  'producer-consumer-field-drift',
+  'unsanitized-input-to-sink',
 ] as const;
 
 const LINT_OVERLAP_EXPECTED_ON = [
@@ -49,10 +64,12 @@ describe('settings defaults — lint-overlap detectors', () => {
     }
   });
 
-  it('disables the 7 lint-overlap detectors by default', async () => {
+  it('disables every default-OFF detector that is currently registered', async () => {
     const { readSettings } = await import('../server/settings-store.js');
     const s = readSettings();
+    const registered = new Set<string>(DETECTOR_IDS as readonly string[]);
     for (const id of LINT_OVERLAP_EXPECTED_OFF) {
+      if (!registered.has(id)) continue; // detector PR hasn't merged yet
       expect(s.detectors[id]).toBe(false);
     }
   });
