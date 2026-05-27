@@ -16,6 +16,7 @@ export default tseslint.config(
       'private',
       'src/__fixtures__/**',
       'src/ui/public/**',
+      'site/**', // landing page + vendored third-party assets (tailwind, …)
       'eslint.config.js',
     ],
   },
