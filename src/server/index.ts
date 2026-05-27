@@ -354,11 +354,9 @@ app.post<{ Body: { detectors?: string[]; minConfidence?: number } }>(
   async (req, reply) => {
     const queued = getScanQueueLength() + (getRunningScanId() ? 1 : 0);
     if (queued >= SCAN_QUEUE_LIMIT) {
-      return reply
-        .code(429)
-        .send({
-          error: `scan queue full (${queued}/${SCAN_QUEUE_LIMIT}); wait for the current scan to finish`,
-        });
+      return reply.code(429).send({
+        error: `scan queue full (${queued}/${SCAN_QUEUE_LIMIT}); wait for the current scan to finish`,
+      });
     }
     const body = req.body ?? {};
     // When the caller doesn't pin detectors, derive the allow-list from
