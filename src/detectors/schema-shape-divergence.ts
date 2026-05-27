@@ -1,9 +1,4 @@
-import type {
-  Finding,
-  SymbolRecord,
-  TypeStructure,
-  FieldStructure,
-} from '../types.js';
+import type { Finding, SymbolRecord, TypeStructure, FieldStructure } from '../types.js';
 import { stableHash } from '../utils/hash.js';
 
 export interface SchemaShapeDivergenceDetectorInput {
@@ -30,9 +25,7 @@ export interface SchemaShapeDivergenceDetectorInput {
 // sets diverge by 1–2 keys. The classic "we added a column to the
 // model but forgot the DTO" drift. Duplicate-type only flags
 // identical shapes; tsc never compares unrelated types. MED severity.
-export function detectSchemaShapeDivergence(
-  input: SchemaShapeDivergenceDetectorInput,
-): Finding[] {
+export function detectSchemaShapeDivergence(input: SchemaShapeDivergenceDetectorInput): Finding[] {
   const maxDrift = input.maxDriftFields ?? 2;
   const minShared = input.minSharedFraction ?? 0.5;
 
@@ -77,7 +70,9 @@ export function detectSchemaShapeDivergence(
         if (diff.added.length === 0 && diff.removed.length === 0) continue; // exact match → duplicate-type owns it
         const totalDriftFields = diff.added.length + diff.removed.length;
         if (totalDriftFields > maxDrift) continue;
-        const shared = Math.min(a.fields.length, b.fields.length) - Math.max(diff.added.length, diff.removed.length);
+        const shared =
+          Math.min(a.fields.length, b.fields.length) -
+          Math.max(diff.added.length, diff.removed.length);
         const smaller = Math.min(a.fields.length, b.fields.length);
         if (smaller > 0 && shared / smaller < minShared) continue;
 
@@ -189,10 +184,7 @@ interface FieldDiff {
   removed: string[]; // present in a, absent in b
 }
 
-function diffFields(
-  a: ReadonlyArray<FieldStructure>,
-  b: ReadonlyArray<FieldStructure>,
-): FieldDiff {
+function diffFields(a: ReadonlyArray<FieldStructure>, b: ReadonlyArray<FieldStructure>): FieldDiff {
   const aNames = new Set(a.map((f) => f.name));
   const bNames = new Set(b.map((f) => f.name));
   const added: string[] = [];

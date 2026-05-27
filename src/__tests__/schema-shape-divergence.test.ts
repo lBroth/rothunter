@@ -45,10 +45,8 @@ describe('schema-shape-divergence detector', () => {
 
   it('does NOT flag an exact match (duplicate-type territory)', async () => {
     const root = await setup({
-      'src/a.ts':
-        'export interface User { id: string; email: string; displayName: string; }\n',
-      'src/b.ts':
-        'export interface UserDTO { id: string; email: string; displayName: string; }\n',
+      'src/a.ts': 'export interface User { id: string; email: string; displayName: string; }\n',
+      'src/b.ts': 'export interface UserDTO { id: string; email: string; displayName: string; }\n',
     });
     try {
       const symbols = await scan(root);
@@ -61,10 +59,8 @@ describe('schema-shape-divergence detector', () => {
 
   it('does NOT flag two unrelated types that happen to share an `id` field', async () => {
     const root = await setup({
-      'src/user.ts':
-        'export interface User { id: string; email: string; displayName: string; }\n',
-      'src/order.ts':
-        'export interface Order { id: string; total: number; currency: string; }\n',
+      'src/user.ts': 'export interface User { id: string; email: string; displayName: string; }\n',
+      'src/order.ts': 'export interface Order { id: string; total: number; currency: string; }\n',
     });
     try {
       const symbols = await scan(root);
@@ -112,8 +108,7 @@ describe('schema-shape-divergence detector', () => {
     const root = await setup({
       'src/model.ts':
         'export type User = { id: string; email: string; displayName: string; createdAt: string; };\n',
-      'src/dto.ts':
-        'export type UserDTO = { id: string; email: string; displayName: string; };\n',
+      'src/dto.ts': 'export type UserDTO = { id: string; email: string; displayName: string; };\n',
     });
     try {
       const symbols = await scan(root);
@@ -145,8 +140,7 @@ describe('schema-shape-divergence detector', () => {
   it('does NOT flag types with fewer than 3 fields (signal too weak)', async () => {
     const root = await setup({
       'src/a.ts': 'export interface User { id: string; email: string; }\n',
-      'src/b.ts':
-        'export interface UserDTO { id: string; email: string; displayName: string; }\n',
+      'src/b.ts': 'export interface UserDTO { id: string; email: string; displayName: string; }\n',
     });
     try {
       const symbols = await scan(root);
