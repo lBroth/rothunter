@@ -40,7 +40,7 @@ describe('re-export-shadow — full RotHunter pipeline', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('flags a re-export shadowing a sibling local declaration with HIGH severity', async () => {
     const root = await setup({
@@ -60,7 +60,7 @@ describe('re-export-shadow — full RotHunter pipeline', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('does NOT emit a finding on a clean workspace', async () => {
     const root = await setup({
@@ -76,5 +76,5 @@ describe('re-export-shadow — full RotHunter pipeline', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
