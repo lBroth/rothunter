@@ -38,9 +38,7 @@ interface ExportTarget {
 // publish bug. Severity HIGH because npm install will fail downstream
 // (or the import will return undefined at runtime). One finding per
 // missing target.
-export function detectPackageExportMismatch(
-  input: PackageExportMismatchDetectorInput,
-): Finding[] {
+export function detectPackageExportMismatch(input: PackageExportMismatchDetectorInput): Finding[] {
   const pkgPath = path.join(input.workspaceRoot, 'package.json');
   if (!existsSync(pkgPath)) return [];
   let pkg: PackageJson;
@@ -148,7 +146,10 @@ function resolveTarget(workspaceRoot: string, spec: string): boolean {
 function jsToTsCandidates(spec: string): string[] {
   const out: string[] = [];
   // Replace dist/ prefix with src/.
-  const srcSwap = spec.replace(/^dist\//, 'src/').replace(/^build\//, 'src/').replace(/^lib\//, 'src/');
+  const srcSwap = spec
+    .replace(/^dist\//, 'src/')
+    .replace(/^build\//, 'src/')
+    .replace(/^lib\//, 'src/');
   const candidates = new Set<string>([spec, srcSwap]);
   for (const base of candidates) {
     if (/\.d\.ts$/.test(base)) {
