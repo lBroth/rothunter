@@ -42,7 +42,12 @@ export function clearQueue(): void {
   }
 }
 
-export function neighbours(currentFp: string): { prev: string | null; next: string | null; index: number; total: number } {
+export function neighbours(currentFp: string): {
+  prev: string | null;
+  next: string | null;
+  index: number;
+  total: number;
+} {
   const q = getQueue();
   const idx = q.indexOf(currentFp);
   if (idx < 0) return { prev: null, next: null, index: -1, total: q.length };

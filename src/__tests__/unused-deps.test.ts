@@ -24,7 +24,16 @@ describe('unused-deps detector', () => {
     try {
       const findings = detectUnusedDeps({
         workspaceRoot: root,
-        imports: [{ source: 'a.ts', specifier: 'react', target: null, namedImports: [], isReExport: false, isStarReExport: false }],
+        imports: [
+          {
+            source: 'a.ts',
+            specifier: 'react',
+            target: null,
+            namedImports: [],
+            isReExport: false,
+            isStarReExport: false,
+          },
+        ],
       });
       expect(findings).toHaveLength(1);
       expect(findings[0]!.title).toMatch(/unused-lib/);
@@ -42,7 +51,16 @@ describe('unused-deps detector', () => {
     try {
       const findings = detectUnusedDeps({
         workspaceRoot: root,
-        imports: [{ source: 'a.ts', specifier: '@scope/used/lib', target: null, namedImports: [], isReExport: false, isStarReExport: false }],
+        imports: [
+          {
+            source: 'a.ts',
+            specifier: '@scope/used/lib',
+            target: null,
+            namedImports: [],
+            isReExport: false,
+            isStarReExport: false,
+          },
+        ],
       });
       expect(findings).toHaveLength(1);
       expect(findings[0]!.title).toMatch(/@scope\/unused/);
@@ -83,8 +101,22 @@ describe('unused-deps detector', () => {
       const findings = detectUnusedDeps({
         workspaceRoot: root,
         imports: [
-          { source: 'a.ts', specifier: 'fs', target: null, namedImports: [], isReExport: false, isStarReExport: false },
-          { source: 'a.ts', specifier: 'node:path', target: null, namedImports: [], isReExport: false, isStarReExport: false },
+          {
+            source: 'a.ts',
+            specifier: 'fs',
+            target: null,
+            namedImports: [],
+            isReExport: false,
+            isStarReExport: false,
+          },
+          {
+            source: 'a.ts',
+            specifier: 'node:path',
+            target: null,
+            namedImports: [],
+            isReExport: false,
+            isStarReExport: false,
+          },
         ],
       });
       // react still unused since imports don't reference it.

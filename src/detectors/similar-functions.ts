@@ -63,7 +63,10 @@ export function detectSimilarFunctions(input: SimilarFunctionsDetectorInput): Fi
   const uf = new UnionFind(candidates.length);
   // Track the best (highest-score) edge seen between any two members of a
   // pair — surfaces the "why" string for the finding.
-  const reasons = new Map<string, { score: number; nameSim: number; bodySim: number; i: number; j: number }>();
+  const reasons = new Map<
+    string,
+    { score: number; nameSim: number; bodySim: number; i: number; j: number }
+  >();
 
   // Two regimes:
   //   - n < BUCKET_THRESHOLD: full pairwise (O(n²)) — small enough to be
@@ -168,12 +171,7 @@ export function detectSimilarFunctions(input: SimilarFunctionsDetectorInput): Fi
         bodyLines: c.sym.range.endLine - c.sym.range.startLine + 1,
         arity: c.fn.params.length,
       }))
-      .sort(
-        (a, b) =>
-          (b.ts ?? 0) - (a.ts ?? 0) ||
-          b.bodyLines - a.bodyLines ||
-          b.arity - a.arity,
-      );
+      .sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0) || b.bodyLines - a.bodyLines || b.arity - a.arity);
     const canonical = ranked[0]!;
     const others = ranked.slice(1);
     const why = reasons.get(String(root)) ?? { score: 0, nameSim: 0, bodySim: 0, i: -1, j: -1 };
@@ -231,7 +229,11 @@ function buildDescription(
   return lines.join('\n');
 }
 
-function buildSuggestion(canonical: RankedEntry, others: RankedEntry[], packageWorthy: boolean): string {
+function buildSuggestion(
+  canonical: RankedEntry,
+  others: RankedEntry[],
+  packageWorthy: boolean,
+): string {
   const base = `Diff each copy against \`${canonical.c.sym.file}\` (\`git diff -- ${canonical.c.sym.file} ${others.map((o) => o.c.sym.file).join(' ')}\`). Decide which behaviour is canonical, then delete the laggards or replace them with imports.`;
   if (!packageWorthy) return base;
   return (
@@ -247,16 +249,16 @@ function buildSuggestion(canonical: RankedEntry, others: RankedEntry[], packageW
 // match runs once per candidate during the initial filter.
 const FRAMEWORK_IDIOM_PREFIXES: ReadonlyArray<string> = [
   'register', // Commander / DI subcommand wires
-  'use',      // React hooks
-  'handle',   // event handlers
-  'on',       // event handlers (onClick, onChange, …)
-  'create',   // factories
-  'make',     // factories
-  'build',    // builders
-  'init',     // boot-up
-  'setup',    // boot-up
-  'before',   // test lifecycle (beforeEach / beforeAll)
-  'after',    // test lifecycle
+  'use', // React hooks
+  'handle', // event handlers
+  'on', // event handlers (onClick, onChange, …)
+  'create', // factories
+  'make', // factories
+  'build', // builders
+  'init', // boot-up
+  'setup', // boot-up
+  'before', // test lifecycle (beforeEach / beforeAll)
+  'after', // test lifecycle
 ];
 
 function isTestPath(file: string): boolean {
@@ -270,15 +272,52 @@ function isTestPath(file: string): boolean {
 }
 
 const IGNORE_NAMES = new Set<string>([
-  'default', 'render', 'constructor', 'toString', 'toJSON', 'valueOf',
-  'index', 'main', 'init', 'setup', 'teardown', 'beforeEach', 'afterEach',
-  'beforeAll', 'afterAll', 'mount', 'unmount', 'use', 'noop', 'empty',
+  'default',
+  'render',
+  'constructor',
+  'toString',
+  'toJSON',
+  'valueOf',
+  'index',
+  'main',
+  'init',
+  'setup',
+  'teardown',
+  'beforeEach',
+  'afterEach',
+  'beforeAll',
+  'afterAll',
+  'mount',
+  'unmount',
+  'use',
+  'noop',
+  'empty',
 ]);
 
 // Stop-words intentionally generic across naming styles.
 const STOP_WORDS = new Set<string>([
-  'get', 'set', 'fn', 'do', 'a', 'an', 'the', 'to', 'of', 'for', 'with',
-  'my', 'new', 'old', 'is', 'has', 'on', 'off', 'and', 'or', 'not', 'fn',
+  'get',
+  'set',
+  'fn',
+  'do',
+  'a',
+  'an',
+  'the',
+  'to',
+  'of',
+  'for',
+  'with',
+  'my',
+  'new',
+  'old',
+  'is',
+  'has',
+  'on',
+  'off',
+  'and',
+  'or',
+  'not',
+  'fn',
 ]);
 
 /**
@@ -372,4 +411,3 @@ function clamp01(n: number): number {
 function fmtDate(unix: number): string {
   return new Date(unix * 1000).toISOString().slice(0, 10);
 }
-

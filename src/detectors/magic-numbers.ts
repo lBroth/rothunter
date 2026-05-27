@@ -5,7 +5,7 @@ import { hasIgnoreAnnotation } from '../utils/ignore-annotation.js';
 import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
 export interface MagicNumbersDetectorInput extends FileWalkingDetectorInput {
-/** Numbers considered "obvious" and not magic. Default `{0, 1, -1, 2, 10, 100, 1000}`. */
+  /** Numbers considered "obvious" and not magic. Default `{0, 1, -1, 2, 10, 100, 1000}`. */
   whitelist?: ReadonlySet<number>;
   /** Per-file finding cap so a single noisy file doesn't dominate the report. Default 5. */
   perFileCap?: number;
@@ -35,14 +35,17 @@ export function detectMagicNumbers(input: MagicNumbersDetectorInput): Finding[] 
 // magic numbers. Add 512/1024/4096 too — they're page/buffer sizes
 // every reader recognises at a glance.
 const DEFAULT_WHITELIST: ReadonlySet<number> = new Set([
-  0, 1, -1, 2,
-  10, 100, 1000,
-  8, 16, 24, 32, 64, 128, 256, 512, 1024, 4096,
+  0, 1, -1, 2, 10, 100, 1000, 8, 16, 24, 32, 64, 128, 256, 512, 1024, 4096,
 ]);
 // Match positive integer literals (we treat negatives via the previous char).
 const NUM_RE = /\b(\d+(?:\.\d+)?)\b/g;
 
-function analyseFile(file: string, raw: string, whitelist: ReadonlySet<number>, cap: number): Finding[] {
+function analyseFile(
+  file: string,
+  raw: string,
+  whitelist: ReadonlySet<number>,
+  cap: number,
+): Finding[] {
   const out: Finding[] = [];
   // Pre-strip strings + comments AND regex literals so literals inside
   // them aren't flagged. Regex masking matters a lot: `[A-Za-z0-9]` flags
@@ -59,32 +62,48 @@ function analyseFile(file: string, raw: string, whitelist: ReadonlySet<number>, 
     // the `-` is start-of-string, opening punctuation, a comma, an
     // operator/comparison, or a `:=` assignment. Identifier or closing-
     // bracket before `-` means subtraction → keep the value positive.
-    const unaryMinus = /(?:^|[=([{,;:?+\-*/%&|^!<>~]|\b(?:return|typeof|in|of|case|delete|void|throw|yield|await|new)\b)\s*-\s*$/.test(before);
+    const unaryMinus =
+      /(?:^|[=([{,;:?+\-*/%&|^!<>~]|\b(?:return|typeof|in|of|case|delete|void|throw|yield|await|new)\b)\s*-\s*$/.test(
+        before,
+      );
     const value = unaryMinus ? -positive : positive;
     if (whitelist.has(value)) continue;
     // Skip if the literal is being assigned to a constant (declaration site).
-    if (/\b(?:const|let|var|enum|readonly)\s+[A-Z_][A-Z0-9_]*\s*[:=]\s*-?\s*$/.test(before)) continue;
+    if (/\b(?:const|let|var|enum|readonly)\s+[A-Z_][A-Z0-9_]*\s*[:=]\s*-?\s*$/.test(before))
+      continue;
     if (/\b(?:const|let|var)\s+\w+\s*[:=]\s*-?\s*$/.test(before)) continue;
     // Skip array indices (preceded by `[`).
     if (/\[\s*-?\s*$/.test(before)) continue;
     // Skip enum members.
-    if (/=\s*-?\s*$/.test(before) && /\benum\b/.test(masked.slice(Math.max(0, m.index! - 200), m.index!))) continue;
+    if (
+      /=\s*-?\s*$/.test(before) &&
+      /\benum\b/.test(masked.slice(Math.max(0, m.index! - 200), m.index!))
+    )
+      continue;
     // Skip exponents (e.g. 1e-3 or 1e+3 — the `3` should not be flagged).
     if (/e[+-]?$/i.test(before)) continue;
     // Skip HTTP status code idioms — `reply.code(502)`, `res.status(404)`,
     // `.code(401).send(...)`, `throw new HttpError(500, ...)`. The method
     // name IS the named constant in framework code; introducing a
     // `HTTP_BAD_GATEWAY = 502` const adds friction without clarity.
-    if (/\.(?:code|status|statusCode|sendStatus)\s*\(\s*-?\s*$/.test(before) && value >= 100 && value < 600) continue;
+    if (
+      /\.(?:code|status|statusCode|sendStatus)\s*\(\s*-?\s*$/.test(before) &&
+      value >= 100 &&
+      value < 600
+    )
+      continue;
     // Skip HTTP success/error-tier range checks: `if (status < 200 ||
     // status >= 300)` and friends. The 200/300/400/500 boundaries are
     // textbook HTTP semantics; flagging them invites the reader to
     // invent names that read worse than the literal.
     if (
-      value >= 100 && value < 600 && value % 100 === 0 &&
+      value >= 100 &&
+      value < 600 &&
+      value % 100 === 0 &&
       /(?:<=?|>=?|===?|!==?)\s*$/.test(before) &&
       /\b(?:status|statusCode|httpStatus|http_status|code)\b/.test(lineAround(masked, m.index!))
-    ) continue;
+    )
+      continue;
     // Skip elements of `new Set([...])` / `new Map([...])` / array literal
     // bound to a named const. The CONST NAME documents what each value
     // represents (`RETRYABLE_HTTP`, `ALLOWED_PORTS`, …) — naming each
@@ -293,19 +312,23 @@ function insideNamedConstCollection(masked: string, idx: number): boolean {
 
 function isAnalysable(file: string): boolean {
   const posix = file.replace(/\\/g, '/');
-  return /\.(?:ts|tsx|mts|cts)$/.test(posix)
-    && !/\.d\.ts$/.test(posix)
-    && !/(^|\/)node_modules\//.test(posix)
-    && !/(?:^|\/)__tests__\//.test(posix)
-    && !/(?:^|\/)tests?\//.test(posix)
-    && !/(?:^|\/)scripts?\//.test(posix)
-    && !/\.test\.(?:ts|tsx)$/.test(posix)
-    && !/\.spec\.(?:ts|tsx)$/.test(posix)
+  return (
+    /\.(?:ts|tsx|mts|cts)$/.test(posix) &&
+    !/\.d\.ts$/.test(posix) &&
+    !/(^|\/)node_modules\//.test(posix) &&
+    !/(?:^|\/)__tests__\//.test(posix) &&
+    !/(?:^|\/)tests?\//.test(posix) &&
+    !/(?:^|\/)scripts?\//.test(posix) &&
+    !/\.test\.(?:ts|tsx)$/.test(posix) &&
+    !/\.spec\.(?:ts|tsx)$/.test(posix) &&
     // Tool config files are mostly threshold / timeout / port numbers
     // by design — flagging every coverage threshold + chunk-size limit
     // as a magic number is noise. Skip the common tooling configs.
-    && !/(?:^|\/)(?:vite|vitest|jest|rollup|webpack|esbuild|tsup|playwright|cypress|drizzle|next|nuxt|astro|svelte|remix|tailwind|postcss|prettier|eslint|biome|babel|rome|tsdown|tsconfig\.[^/]*)\.config\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/.test(posix)
-    && !/(?:^|\/)\.?(?:eslint|prettier|stylelint)rc(?:\.[^/]+)?$/.test(posix);
+    !/(?:^|\/)(?:vite|vitest|jest|rollup|webpack|esbuild|tsup|playwright|cypress|drizzle|next|nuxt|astro|svelte|remix|tailwind|postcss|prettier|eslint|biome|babel|rome|tsdown|tsconfig\.[^/]*)\.config\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/.test(
+      posix,
+    ) &&
+    !/(?:^|\/)\.?(?:eslint|prettier|stylelint)rc(?:\.[^/]+)?$/.test(posix)
+  );
 }
 
 function lineOf(raw: string, idx: number): number {
@@ -325,4 +348,3 @@ function snippetAround(raw: string, line: number): string {
   const to = Math.min(lines.length, line + 1);
   return lines.slice(from, to).join('\n');
 }
-

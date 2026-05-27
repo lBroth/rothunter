@@ -27,9 +27,7 @@ export class DuplicateFunctionDetector implements Detector {
   name = 'Duplicate function detector';
 
   async run(symbols: SymbolRecord[]): Promise<Finding[]> {
-    const fnLike = symbols.filter(
-      (s) => s.kind === 'function' && s.structure?.kind === 'function',
-    );
+    const fnLike = symbols.filter((s) => s.kind === 'function' && s.structure?.kind === 'function');
 
     // Skip trivial bodies — a single `return x;` collides across unrelated helpers.
     const nonTrivial = fnLike.filter((s) => {
@@ -184,12 +182,15 @@ export class DuplicateFunctionDetector implements Detector {
     const matchedByLabel: Record<MatchedBy, string> = {
       strict: 'Same signature + same body (verbatim after whitespace/comment collapse)',
       structural: 'Same skeleton — identifiers anonymised, signature shape and body shape match',
-      'normalized-names': 'Same signature + body after parameter-name normalisation (snake/camel + synonyms)',
+      'normalized-names':
+        'Same signature + body after parameter-name normalisation (snake/camel + synonyms)',
       'near-duplicate': `Near-duplicate body (Jaccard ≥ ${NEAR_DUP_THRESHOLD} on 4-token shingles)`,
     };
     const extra =
       c.signals.size > 1
-        ? `\nAlso matches at: ${Array.from(c.signals).filter((s) => s !== c.matchedBy).join(', ')}.`
+        ? `\nAlso matches at: ${Array.from(c.signals)
+            .filter((s) => s !== c.matchedBy)
+            .join(', ')}.`
         : '';
     return `Match level: ${matchedByLabel[c.matchedBy]} (layer ${c.layer}).${extra}\nLocations:\n${where}`;
   }
@@ -214,4 +215,3 @@ function jaccard(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
   const union = a.size + b.size - intersect;
   return union === 0 ? 0 : intersect / union;
 }
-

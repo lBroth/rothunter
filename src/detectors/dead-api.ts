@@ -117,4 +117,3 @@ function stripWorkspace(file: string, workspace: string): string {
   const prefix = `${workspace}/`;
   return file.startsWith(prefix) ? file.slice(prefix.length) : file;
 }
-

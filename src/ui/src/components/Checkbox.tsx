@@ -58,7 +58,11 @@ export function Checkbox({
         (disabled ? ' opacity-40 cursor-not-allowed' : ' cursor-pointer')
       }
     >
-      {indeterminate ? <Minus size={iconSize} strokeWidth={3} /> : checked ? <Check size={iconSize} strokeWidth={3} /> : null}
+      {indeterminate ? (
+        <Minus size={iconSize} strokeWidth={3} />
+      ) : checked ? (
+        <Check size={iconSize} strokeWidth={3} />
+      ) : null}
     </button>
   );
 }

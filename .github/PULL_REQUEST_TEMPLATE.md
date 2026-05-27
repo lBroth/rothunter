@@ -1,6 +1,6 @@
 ## What changes
 
-(One sentence per change. Prefer "fix(silent-catch): respect /* expected */ pragma" form.)
+(One sentence per change. Prefer "fix(silent-catch): respect /_ expected _/ pragma" form.)
 
 ## Why
 

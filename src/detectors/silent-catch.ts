@@ -72,21 +72,24 @@ function classifyCatchBody(body: string): CatchVerdict | null {
   if (stripped === '') {
     return {
       severity: 'medium',
-      blurb: 'The `catch` block is empty — every error inside the corresponding `try` is silently discarded.',
+      blurb:
+        'The `catch` block is empty — every error inside the corresponding `try` is silently discarded.',
     };
   }
   // Single `return ...` with no operand or literal `null` / `undefined`.
   if (/^return\s*(?:undefined|null)?\s*;?$/.test(stripped)) {
     return {
       severity: 'medium',
-      blurb: 'The `catch` block returns silently — the caller cannot distinguish "no result" from "errored out".',
+      blurb:
+        'The `catch` block returns silently — the caller cannot distinguish "no result" from "errored out".',
     };
   }
   // Only a console.log/warn/info/debug call (NOT console.error — that's intentional).
   if (/^console\.(log|warn|info|debug)\([^;]*\);?$/.test(stripped)) {
     return {
       severity: 'medium',
-      blurb: 'The `catch` block only logs to the console — failures never reach your error reporter or alerting.',
+      blurb:
+        'The `catch` block only logs to the console — failures never reach your error reporter or alerting.',
     };
   }
   return null;
@@ -171,8 +174,9 @@ function sliceSnippet(raw: string, startIdx: number, endIdx: number): string {
 }
 
 function isAnalysable(file: string): boolean {
-  return /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(file)
-    && !/(^|\/)node_modules\//.test(file)
-    && !/\.d\.ts$/.test(file);
+  return (
+    /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(file) &&
+    !/(^|\/)node_modules\//.test(file) &&
+    !/\.d\.ts$/.test(file)
+  );
 }
-

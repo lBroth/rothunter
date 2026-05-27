@@ -90,7 +90,17 @@ export type ScanProgressEvent =
   | { state: 'parsing'; files?: number; symbols?: number }
   | { state: 'detecting'; detector: string }
   | { state: 'llm-start'; total: number }
-  | { state: 'llm-verdict'; done: number; total: number; detectorId: string; race: boolean; confidence: number; reason: string; latencyMs: number; cluster?: string }
+  | {
+      state: 'llm-verdict';
+      done: number;
+      total: number;
+      detectorId: string;
+      race: boolean;
+      confidence: number;
+      reason: string;
+      latencyMs: number;
+      cluster?: string;
+    }
   | { state: 'done'; findings: number; durationMs: number };
 
 export interface RotHunterResult {
@@ -102,10 +112,7 @@ export interface RotHunterResult {
 export class RotHunter {
   private parser = new TypeScriptParser();
   private normalizer = new TypeNormalizer();
-  private detectors: Detector[] = [
-    new DuplicateTypeDetector(),
-    new DuplicateFunctionDetector(),
-  ];
+  private detectors: Detector[] = [new DuplicateTypeDetector(), new DuplicateFunctionDetector()];
 
   async run(opts: RotHunterRunOptions): Promise<RotHunterResult> {
     const startedAt = Date.now();
@@ -183,9 +190,7 @@ export class RotHunter {
       ...detectDeadModules({ files: parsed.files, graph: importGraph, entryPoints, reachable }),
     );
     logger.info({ symbols: symbols.length }, 'RotHunter: running detector dead-export');
-    findings.push(
-      ...detectDeadExports({ symbols, imports: parsed.imports, entryPoints }),
-    );
+    findings.push(...detectDeadExports({ symbols, imports: parsed.imports, entryPoints }));
 
     if (isMulti) {
       logger.info({ symbols: symbols.length }, 'RotHunter: running detector dead-api');
@@ -244,7 +249,8 @@ export class RotHunter {
             .map((i) => ({
               ...i,
               source: stripPrefix(i.source, wsPrefix),
-              target: i.target && i.targetWorkspace === ws.name ? stripPrefix(i.target, wsPrefix) : null,
+              target:
+                i.target && i.targetWorkspace === ws.name ? stripPrefix(i.target, wsPrefix) : null,
             }));
           const wsIacEntries = resolveIacEntryFiles(ws.rootAbs, wsFiles);
           logger.info(
@@ -275,10 +281,7 @@ export class RotHunter {
         // account-service writes it from another). Running these
         // per-workspace misses every cross-service race because each
         // package has only one writer locally.
-        const crossFindings = await runCrossWorkspaceRaceDetectors(
-          config.workspaces,
-          emit,
-        );
+        const crossFindings = await runCrossWorkspaceRaceDetectors(config.workspaces, emit);
         findings.push(...crossFindings);
       }
     }
@@ -312,7 +315,10 @@ export class RotHunter {
     const envConc = Number(process.env.ROTHUNTER_LLM_CONCURRENCY);
     const llmConcurrency = Math.max(
       1,
-      Math.min(16, Math.floor(opts.llmConcurrency ?? (Number.isFinite(envConc) && envConc > 0 ? envConc : 1))),
+      Math.min(
+        16,
+        Math.floor(opts.llmConcurrency ?? (Number.isFinite(envConc) && envConc > 0 ? envConc : 1)),
+      ),
     );
     await this.runLlmConfirmation(
       findings,
@@ -367,7 +373,10 @@ export class RotHunter {
       // No LLM reachable — skip the confirmation pass entirely so we
       // don't burn N × verdict-timeout on a scan that has no oracle.
       // Findings stay at their deterministic severity / confidence.
-      logger.warn({ count: candidates.length }, 'RotHunter: LLM warmup failed; skipping confirmation pass');
+      logger.warn(
+        { count: candidates.length },
+        'RotHunter: LLM warmup failed; skipping confirmation pass',
+      );
       emit?.({ state: 'llm-start', total: 0 });
       return;
     }
@@ -442,11 +451,19 @@ export class RotHunter {
             };
           }
         }
-        reportVerdict(finding, result.same_concept, result.confidence, result.reason, Date.now() - verdictStart);
+        reportVerdict(
+          finding,
+          result.same_concept,
+          result.confidence,
+          result.reason,
+          Date.now() - verdictStart,
+        );
       } else if (finding.detectorId === 'api-race') {
         // Cluster meta lives in evidence[].note as JSON (emitted by the
         // detector). Title is human-facing only — never re-parse it.
-        const first = parseEvidenceNote<{ method?: string; pathPattern?: string }>(finding.evidence[0]);
+        const first = parseEvidenceNote<{ method?: string; pathPattern?: string }>(
+          finding.evidence[0],
+        );
         const method = first.method ?? '';
         const pathPattern = first.pathPattern ?? '';
         if (!method || !pathPattern) return;
@@ -476,9 +493,20 @@ export class RotHunter {
         applyClusterVerdict(
           finding,
           { positive: verdict.race, confidence: verdict.confidence, reason: verdict.reason },
-          { threshold, positiveLabel: 'real cross-flow API race', negativeLabel: 'safe', autoFpThreshold },
+          {
+            threshold,
+            positiveLabel: 'real cross-flow API race',
+            negativeLabel: 'safe',
+            autoFpThreshold,
+          },
         );
-        reportVerdict(finding, verdict.race, verdict.confidence, verdict.reason, Date.now() - verdictStart);
+        reportVerdict(
+          finding,
+          verdict.race,
+          verdict.confidence,
+          verdict.reason,
+          Date.now() - verdictStart,
+        );
       } else if (finding.detectorId === 'shared-db-write') {
         // Cluster meta lives in evidence[].note as JSON (emitted by the
         // detector). Title is human-facing only — never re-parse it.
@@ -512,9 +540,20 @@ export class RotHunter {
         applyClusterVerdict(
           finding,
           { positive: verdict.race, confidence: verdict.confidence, reason: verdict.reason },
-          { threshold, positiveLabel: 'real cross-flow race', negativeLabel: 'safe', autoFpThreshold },
+          {
+            threshold,
+            positiveLabel: 'real cross-flow race',
+            negativeLabel: 'safe',
+            autoFpThreshold,
+          },
         );
-        reportVerdict(finding, verdict.race, verdict.confidence, verdict.reason, Date.now() - verdictStart);
+        reportVerdict(
+          finding,
+          verdict.race,
+          verdict.confidence,
+          verdict.reason,
+          Date.now() - verdictStart,
+        );
       } else if (finding.detectorId === 'race-condition') {
         const ev = finding.evidence[0];
         if (!ev || !ev.note) return;
@@ -545,11 +584,22 @@ export class RotHunter {
           { positive: verdict.race, confidence: verdict.confidence, reason: verdict.reason },
           { threshold, positiveLabel: 'real race', negativeLabel: 'safe', autoFpThreshold },
         );
-        reportVerdict(finding, verdict.race, verdict.confidence, verdict.reason, Date.now() - verdictStart);
+        reportVerdict(
+          finding,
+          verdict.race,
+          verdict.confidence,
+          verdict.reason,
+          Date.now() - verdictStart,
+        );
       } else if (finding.detectorId === 'mutation') {
         const ev = finding.evidence[0];
         if (!ev || !ev.note) return;
-        let meta: { enclosingSource?: string; enclosingName?: string; pattern?: string; escapes?: boolean };
+        let meta: {
+          enclosingSource?: string;
+          enclosingName?: string;
+          pattern?: string;
+          escapes?: boolean;
+        };
         try {
           meta = JSON.parse(ev.note) as typeof meta;
         } catch {
@@ -576,10 +626,25 @@ export class RotHunter {
         // with confidence < 0.85.
         applyClusterVerdict(
           finding,
-          { positive: !verdict.intentional, confidence: verdict.confidence, reason: verdict.reason },
-          { threshold, positiveLabel: 'potential bug', negativeLabel: 'intentional', autoFpThreshold },
+          {
+            positive: !verdict.intentional,
+            confidence: verdict.confidence,
+            reason: verdict.reason,
+          },
+          {
+            threshold,
+            positiveLabel: 'potential bug',
+            negativeLabel: 'intentional',
+            autoFpThreshold,
+          },
         );
-        reportVerdict(finding, !verdict.intentional, verdict.confidence, verdict.reason, Date.now() - verdictStart);
+        reportVerdict(
+          finding,
+          !verdict.intentional,
+          verdict.confidence,
+          verdict.reason,
+          Date.now() - verdictStart,
+        );
       } else if (TRIAGE_DETECTORS.has(finding.detectorId)) {
         // Generic real-vs-FP triage for detectors with no cluster
         // confirmer of their own. For reachability + hub detectors we
@@ -604,9 +669,20 @@ export class RotHunter {
         applyClusterVerdict(
           finding,
           { positive: verdict.real, confidence: verdict.confidence, reason: verdict.reason },
-          { threshold, positiveLabel: 'real defect', negativeLabel: 'intentional pattern', autoFpThreshold },
+          {
+            threshold,
+            positiveLabel: 'real defect',
+            negativeLabel: 'intentional pattern',
+            autoFpThreshold,
+          },
         );
-        reportVerdict(finding, verdict.real, verdict.confidence, verdict.reason, Date.now() - verdictStart);
+        reportVerdict(
+          finding,
+          verdict.real,
+          verdict.confidence,
+          verdict.reason,
+          Date.now() - verdictStart,
+        );
       }
     };
 
@@ -805,31 +881,42 @@ async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Findi
   };
 
   run('mutation', () =>
-    detectMutations({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectMutations({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
   run('race-condition', () =>
-    detectRaceConditions({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectRaceConditions({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
   run('shared-db-write', () =>
-    detectSharedDbWrites({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectSharedDbWrites({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
   run('api-race', () =>
-    detectApiRaces({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
-  run('bad-config', () =>
-    detectBadConfig({ workspaceRoot: ctx.workspaceRoot, files }));
+    detectApiRaces({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
+  run('bad-config', () => detectBadConfig({ workspaceRoot: ctx.workspaceRoot, files }));
   run('silent-catch', () =>
-    detectSilentCatches({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectSilentCatches({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
   run('skip-tests', () =>
-    detectSkipTests({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectSkipTests({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
   run('long-file', () =>
-    detectLongFiles({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectLongFiles({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
   run('console-log-prod', () =>
-    detectConsoleLogsInProd({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectConsoleLogsInProd({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
   run('magic-numbers', () =>
-    detectMagicNumbers({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectMagicNumbers({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
   run('mutable-globals', () =>
-    detectMutableGlobals({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectMutableGlobals({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
   run('unused-deps', () =>
-    detectUnusedDeps({ workspaceRoot: ctx.workspaceRoot, imports: importsArr }));
+    detectUnusedDeps({ workspaceRoot: ctx.workspaceRoot, imports: importsArr }),
+  );
   run('similar-functions', () =>
-    detectSimilarFunctions({ workspaceRoot: ctx.workspaceRoot, symbols: symbolsArr }));
+    detectSimilarFunctions({ workspaceRoot: ctx.workspaceRoot, symbols: symbolsArr }),
+  );
   // todo-comments does its own workspace walk so it picks up Python / Go /
   // shell sources the TS parser skips. No `files` arg by design.
   run('todo-comments', () => detectTodoComments({ workspaceRoot: ctx.workspaceRoot }));
@@ -989,8 +1076,8 @@ function buildMagicNumbersContext(
     // Prefer the tightest match (deepest nesting).
     if (
       enclosingSig &&
-      (s.range.endLine - s.range.startLine) >
-        (lines.findIndex((_, i) => i + 1 === line) - s.range.startLine)
+      s.range.endLine - s.range.startLine >
+        lines.findIndex((_, i) => i + 1 === line) - s.range.startLine
     ) {
       continue;
     }
@@ -1047,7 +1134,8 @@ function buildDeadExportContext(
     // First non-blank line of the source — usually the declaration
     // signature for interfaces / functions / classes.
     const firstLine = s.source.split('\n').find((ln) => ln.trim().length > 0) ?? '';
-    if (firstLine) siblings.push(`- ${s.kind} \`${s.name}\`: \`${firstLine.trim().slice(0, 160)}\``);
+    if (firstLine)
+      siblings.push(`- ${s.kind} \`${s.name}\`: \`${firstLine.trim().slice(0, 160)}\``);
     if (siblings.length >= 6) break;
   }
   const parts: string[] = [];
@@ -1100,8 +1188,10 @@ function clusterLabel(finding: Finding): string | undefined {
   const first = finding.evidence[0];
   if (!first) return undefined;
   const note = parseEvidenceNote<{
-    method?: string; pathPattern?: string;
-    entity?: string; column?: string;
+    method?: string;
+    pathPattern?: string;
+    entity?: string;
+    column?: string;
     target?: string;
   }>(first);
   if (note.method && note.pathPattern) return `${note.method} ${note.pathPattern}`;
@@ -1182,10 +1272,7 @@ const ALWAYS_TRIAGE_DETECTORS = new Set<string>([
  *     `{id, name}`-style shapes regularly collide across unrelated DTOs and need
  *     a semantic check (the smoke case Template/RegistryAuth/Document/Catalog).
  */
-function requiresLlmConfirmation(
-  finding: Finding,
-  symbolById: Map<string, SymbolRecord>,
-): boolean {
+function requiresLlmConfirmation(finding: Finding, symbolById: Map<string, SymbolRecord>): boolean {
   // Mutation findings always get the LLM intent check — even Tier 1
   // strict matches are borderline by nature ("is this mutation intentional?").
   if (finding.detectorId === 'mutation') return true;
@@ -1211,18 +1298,17 @@ function requiresLlmConfirmation(
     if (ALWAYS_TRIAGE_DETECTORS.has(finding.detectorId)) return true;
     if (finding.severity !== 'low') return true;
   }
-  if (finding.detectorId !== 'duplicate-type' && finding.detectorId !== 'duplicate-function') return false;
+  if (finding.detectorId !== 'duplicate-type' && finding.detectorId !== 'duplicate-function')
+    return false;
   if (finding.layer >= 2) return true;
   if (finding.confidence < 0.95) return true;
   const ids = finding.evidence
     .map((ev) => findSymbolIdForEvidence(symbolById, ev.file, ev.range.startLine))
     .filter((id): id is string => Boolean(id));
-  const symbols = ids
-    .map((id) => symbolById.get(id))
-    .filter((s): s is SymbolRecord => Boolean(s));
+  const symbols = ids.map((id) => symbolById.get(id)).filter((s): s is SymbolRecord => Boolean(s));
   const distinctNames = new Set(symbols.map((s) => s.name)).size;
   const firstStruct = symbols[0]?.structure;
-  const fieldCount = firstStruct && 'fields' in firstStruct ? firstStruct.fields?.length ?? 0 : 0;
+  const fieldCount = firstStruct && 'fields' in firstStruct ? (firstStruct.fields?.length ?? 0) : 0;
   return distinctNames >= 2 && fieldCount > 0 && fieldCount <= 3;
 }
 

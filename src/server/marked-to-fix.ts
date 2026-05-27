@@ -32,9 +32,5 @@ export function readMarkedToFix(workspaceRoot: string): Set<string> {
 export async function writeMarkedToFix(workspaceRoot: string, set: Set<string>): Promise<void> {
   const file = markedToFixFile(workspaceRoot);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(
-    file,
-    JSON.stringify({ fingerprints: [...set].sort() }, null, 2),
-    'utf-8',
-  );
+  await fs.writeFile(file, JSON.stringify({ fingerprints: [...set].sort() }, null, 2), 'utf-8');
 }

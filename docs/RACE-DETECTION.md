@@ -4,11 +4,11 @@ rothunter catches three shapes of race condition that traditional
 linters and SonarQube-class scanners cannot see, because the
 race spans repository / service / database boundaries:
 
-| # | Shape | Detector | Severity |
-|---|-------|----------|----------|
-| 1 | Two services writing the same DB column with no coordination | `shared-db-write` | HIGH |
-| 2 | Two services calling the same write-endpoint with no version check | `api-race` | HIGH |
-| 3 | Async fan-out where the same endpoint is hit by sibling services | `api-race` | HIGH |
+| #   | Shape                                                              | Detector          | Severity |
+| --- | ------------------------------------------------------------------ | ----------------- | -------- |
+| 1   | Two services writing the same DB column with no coordination       | `shared-db-write` | HIGH     |
+| 2   | Two services calling the same write-endpoint with no version check | `api-race`        | HIGH     |
+| 3   | Async fan-out where the same endpoint is hit by sibling services   | `api-race`        | HIGH     |
 
 The walkthrough below uses a 7-package monorepo (`packages/*`) wired
 together by HTTP fetches. Boot the engine with `npm run dev:full`,

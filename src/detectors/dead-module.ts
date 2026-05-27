@@ -62,4 +62,3 @@ function shouldExcludeFromDeadCheck(file: string): boolean {
   const posix = file.split(path.sep).join('/');
   return ALWAYS_SKIP_PATTERNS.some((re) => re.test(posix));
 }
-

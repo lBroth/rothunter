@@ -30,11 +30,7 @@ export function readFalsePositives(workspaceRoot: string): Set<string> {
 export async function writeFalsePositives(workspaceRoot: string, set: Set<string>): Promise<void> {
   const file = falsePositivesFile(workspaceRoot);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(
-    file,
-    JSON.stringify({ fingerprints: [...set].sort() }, null, 2),
-    'utf-8',
-  );
+  await fs.writeFile(file, JSON.stringify({ fingerprints: [...set].sort() }, null, 2), 'utf-8');
 }
 
 export function splitFalsePositives(
@@ -91,9 +87,5 @@ export function readKeptOpen(workspaceRoot: string): Set<string> {
 export async function writeKeptOpen(workspaceRoot: string, set: Set<string>): Promise<void> {
   const file = keptOpenFile(workspaceRoot);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(
-    file,
-    JSON.stringify({ fingerprints: [...set].sort() }, null, 2),
-    'utf-8',
-  );
+  await fs.writeFile(file, JSON.stringify({ fingerprints: [...set].sort() }, null, 2), 'utf-8');
 }

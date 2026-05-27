@@ -116,10 +116,10 @@ export class LlmConfirmer {
       .replace('{{PROJECT_CONVENTIONS}}', conventionsBlock);
 
     try {
-      const raw = await this.llm.chat(
-        [{ role: 'user', content: prompt }],
-        { temperature: 0, json: true },
-      );
+      const raw = await this.llm.chat([{ role: 'user', content: prompt }], {
+        temperature: 0,
+        json: true,
+      });
       const parsed = parseLlmJsonResponse(raw);
       const result = ConfirmationSchema.parse(parsed);
       this.cache.set(cacheKey, result);

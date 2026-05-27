@@ -264,7 +264,11 @@ export function broadcast(scanId: string, event: ScanSseEvent): void {
 }
 
 export function applyProgressToRecord(record: ScanRecord, event: ScanProgressEvent): ScanSseEvent {
-  const sse: ScanSseEvent = { scanId: record.scanId, ts: Date.now(), state: event.state as ScanSseEvent['state'] };
+  const sse: ScanSseEvent = {
+    scanId: record.scanId,
+    ts: Date.now(),
+    state: event.state as ScanSseEvent['state'],
+  };
   switch (event.state) {
     case 'parsing':
       record.state = 'parsing';

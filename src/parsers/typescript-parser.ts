@@ -82,11 +82,10 @@ export class TypeScriptParser {
         // and every other operator-ignored tree out of memory — a real
         // monorepo would otherwise blow the V8 heap loading 60 k+ files
         // before any filter ran.
-        const exts =
-          opts.filePatterns?.flatMap((p) => {
-            const m = /\*\.(\w+)$/.exec(p);
-            return m ? [`.${m[1]}`] : [];
-          }) ?? ['.ts', '.tsx'];
+        const exts = opts.filePatterns?.flatMap((p) => {
+          const m = /\*\.(\w+)$/.exec(p);
+          return m ? [`.${m[1]}`] : [];
+        }) ?? ['.ts', '.tsx'];
         const enumerated = enumerateSourceFiles(opts.workspaceRoot, gitignore, exts);
         if (enumerated.length > 0) {
           project.addSourceFilesAtPaths(
@@ -285,10 +284,7 @@ export class TypeScriptParser {
 
     const properties: FieldStructure[] = cls
       .getInstanceProperties()
-      .filter(
-        (p): p is PropertyDeclaration =>
-          p.getKind() === SyntaxKind.PropertyDeclaration,
-      )
+      .filter((p): p is PropertyDeclaration => p.getKind() === SyntaxKind.PropertyDeclaration)
       .map((p) => this.fieldFromClassProperty(p));
 
     const methods: FieldStructure[] = cls
@@ -534,13 +530,70 @@ function collapseSource(text: string): string {
 
 const SHINGLE_SIZE = 4;
 const TS_KEYWORDS_FOR_SHINGLING = new Set([
-  'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default', 'break', 'continue',
-  'return', 'throw', 'try', 'catch', 'finally', 'new', 'this', 'super', 'class', 'extends',
-  'implements', 'function', 'const', 'let', 'var', 'typeof', 'instanceof', 'in', 'of',
-  'await', 'async', 'yield', 'true', 'false', 'null', 'undefined', 'void', 'delete',
-  'as', 'is', 'satisfies', 'keyof', 'readonly', 'public', 'private', 'protected', 'static',
-  'export', 'import', 'from', 'string', 'number', 'boolean', 'object', 'never', 'any',
-  'unknown', 'bigint', 'symbol', 'Date', 'Array', 'Map', 'Set', 'Promise',
+  'if',
+  'else',
+  'for',
+  'while',
+  'do',
+  'switch',
+  'case',
+  'default',
+  'break',
+  'continue',
+  'return',
+  'throw',
+  'try',
+  'catch',
+  'finally',
+  'new',
+  'this',
+  'super',
+  'class',
+  'extends',
+  'implements',
+  'function',
+  'const',
+  'let',
+  'var',
+  'typeof',
+  'instanceof',
+  'in',
+  'of',
+  'await',
+  'async',
+  'yield',
+  'true',
+  'false',
+  'null',
+  'undefined',
+  'void',
+  'delete',
+  'as',
+  'is',
+  'satisfies',
+  'keyof',
+  'readonly',
+  'public',
+  'private',
+  'protected',
+  'static',
+  'export',
+  'import',
+  'from',
+  'string',
+  'number',
+  'boolean',
+  'object',
+  'never',
+  'any',
+  'unknown',
+  'bigint',
+  'symbol',
+  'Date',
+  'Array',
+  'Map',
+  'Set',
+  'Promise',
 ]);
 
 /**

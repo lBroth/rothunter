@@ -105,7 +105,8 @@ describe('tsconfig paths', () => {
       'tsconfig.json': JSON.stringify({
         compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'] } },
       }),
-      'src/index.ts': "import { used } from '@/lib/util';\nexport function main(): void { used(); }\n",
+      'src/index.ts':
+        "import { used } from '@/lib/util';\nexport function main(): void { used(); }\n",
       'src/lib/util.ts': 'export function used(): void {}\n',
     });
     try {

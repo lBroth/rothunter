@@ -77,10 +77,10 @@ export class RaceConfirmer {
       .replace('{{ENCLOSING}}', input.enclosingSource);
 
     try {
-      const raw = await this.llm.chat(
-        [{ role: 'user', content: prompt }],
-        { temperature: 0, maxTokens: 96 },
-      );
+      const raw = await this.llm.chat([{ role: 'user', content: prompt }], {
+        temperature: 0,
+        maxTokens: 96,
+      });
       const parsed = parseLlmJsonResponse(raw);
       const verdict = VerdictSchema.parse(parsed);
       this.cache.set(cacheKey, verdict);

@@ -50,7 +50,10 @@ function analyseFile(file: string, raw: string): Finding[] {
   for (const d of declarations) {
     // Look for reassignments anywhere after the declaration line.
     const after = lines.slice(d.line).join('\n');
-    const re = new RegExp(`(?<![\\.\\w])${escapeForRegex(d.name)}\\s*(?:=(?!=)|\\+=|-=|\\*=|/=|\\?\\?=|\\|\\|=|&&=)`, 'g');
+    const re = new RegExp(
+      `(?<![\\.\\w])${escapeForRegex(d.name)}\\s*(?:=(?!=)|\\+=|-=|\\*=|/=|\\?\\?=|\\|\\|=|&&=)`,
+      'g',
+    );
     const matches = [...after.matchAll(re)];
     if (matches.length === 0) continue;
     if (hasIgnoreAnnotation(raw, d.line, 'mutable-globals')) continue;
@@ -60,8 +63,7 @@ function analyseFile(file: string, raw: string): Finding[] {
       confidence: 0.8,
       layer: 1,
       title: `Mutable top-level binding: \`${d.name}\` in ${file}:${d.line}`,
-      description:
-        `\`${d.name}\` is declared with \`let\`/\`var\` at module scope and reassigned later. Module-scope mutation is shared by every importer — common cause of cross-test pollution, hidden state in SSR, and bugs that only appear after the second request.`,
+      description: `\`${d.name}\` is declared with \`let\`/\`var\` at module scope and reassigned later. Module-scope mutation is shared by every importer — common cause of cross-test pollution, hidden state in SSR, and bugs that only appear after the second request.`,
       evidence: [
         {
           file,
@@ -77,16 +79,17 @@ function analyseFile(file: string, raw: string): Finding[] {
   return out;
 }
 
-
 function isAnalysable(file: string): boolean {
   const posix = file.replace(/\\/g, '/');
-  return /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(posix)
-    && !/\.d\.ts$/.test(posix)
-    && !/(^|\/)node_modules\//.test(posix)
-    && !/(?:^|\/)__tests__\//.test(posix)
-    && !/(?:^|\/)tests?\//.test(posix)
-    && !/\.test\.(?:ts|tsx|js|jsx)$/.test(posix)
-    && !/\.spec\.(?:ts|tsx|js|jsx)$/.test(posix);
+  return (
+    /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(posix) &&
+    !/\.d\.ts$/.test(posix) &&
+    !/(^|\/)node_modules\//.test(posix) &&
+    !/(?:^|\/)__tests__\//.test(posix) &&
+    !/(?:^|\/)tests?\//.test(posix) &&
+    !/\.test\.(?:ts|tsx|js|jsx)$/.test(posix) &&
+    !/\.spec\.(?:ts|tsx|js|jsx)$/.test(posix)
+  );
 }
 
 function snippetAround(raw: string, line: number): string {
@@ -95,4 +98,3 @@ function snippetAround(raw: string, line: number): string {
   const to = Math.min(lines.length, line + 1);
   return lines.slice(from, to).join('\n');
 }
-

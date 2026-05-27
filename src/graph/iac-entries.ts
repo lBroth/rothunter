@@ -51,7 +51,8 @@ function walkFile(workspaceRoot: string, sourceFile: SourceFile, accumulator: Se
       if (!init) continue;
       // Accept plain string literals and template literals with no interpolation.
       const k = init.getKind();
-      if (k !== SyntaxKind.StringLiteral && k !== SyntaxKind.NoSubstitutionTemplateLiteral) continue;
+      if (k !== SyntaxKind.StringLiteral && k !== SyntaxKind.NoSubstitutionTemplateLiteral)
+        continue;
       const raw = init.getLiteralText();
 
       // `handler: 'src/handlers/foo.handler'` — strip the trailing export name.
@@ -78,7 +79,8 @@ function walkFile(workspaceRoot: string, sourceFile: SourceFile, accumulator: Se
         | undefined;
       if (!init) continue;
       const k = init.getKind();
-      if (k !== SyntaxKind.StringLiteral && k !== SyntaxKind.NoSubstitutionTemplateLiteral) continue;
+      if (k !== SyntaxKind.StringLiteral && k !== SyntaxKind.NoSubstitutionTemplateLiteral)
+        continue;
       const raw = init.getLiteralText();
       const filePart = raw.replace(/\.[A-Za-z_$][\w$]*$/, '');
       const resolved = resolveEntryString(workspaceRoot, sourceFileDir, filePart);
@@ -89,7 +91,9 @@ function walkFile(workspaceRoot: string, sourceFile: SourceFile, accumulator: Se
 
 /** Walk up the parent chain looking for the PropertyAssignment that holds this object literal. */
 function inferPropertyOwnerName(node: unknown): string | undefined {
-  let cur = node as { getKind?: () => number; getParent?: () => unknown; getName?: () => string } | undefined;
+  let cur = node as
+    | { getKind?: () => number; getParent?: () => unknown; getName?: () => string }
+    | undefined;
   for (let i = 0; cur && i < 4; i++) {
     if (cur.getKind && cur.getKind() === SyntaxKind.PropertyAssignment && cur.getName) {
       return cur.getName();
@@ -104,7 +108,11 @@ function inferPropertyOwnerName(node: unknown): string | undefined {
  * string is typically project-relative (`src/handlers/foo.ts`) but may be
  * relative to the file declaring the construct (`./foo.ts`).
  */
-function resolveEntryString(workspaceRoot: string, sourceFileDir: string, raw: string): string | null {
+function resolveEntryString(
+  workspaceRoot: string,
+  sourceFileDir: string,
+  raw: string,
+): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
 

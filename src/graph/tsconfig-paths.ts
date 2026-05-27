@@ -48,7 +48,11 @@ function readMergedConfig(configPath: string, visited: Set<string>): RawConfig |
   // chains the cycle guard didn't catch (e.g. each step is a distinct
   // file but the chain length is still adversarial).
   const realPath = (() => {
-    try { return fs.realpathSync(configPath); } catch { return configPath; }
+    try {
+      return fs.realpathSync(configPath);
+    } catch {
+      return configPath;
+    }
   })();
   if (visited.has(realPath)) return null;
   if (visited.size >= MAX_EXTENDS_DEPTH) return null;
@@ -171,11 +175,7 @@ function stripJsoncTrivia(text: string): string {
   return out;
 }
 
-function compileMappings(
-  configPath: string,
-  raw: RawConfig,
-  workspaceRoot: string,
-): TsconfigPaths {
+function compileMappings(configPath: string, raw: RawConfig, workspaceRoot: string): TsconfigPaths {
   const configDir = path.dirname(configPath);
   const baseUrl = raw.compilerOptions?.baseUrl;
   const baseDir = baseUrl ? path.resolve(configDir, baseUrl) : workspaceRoot;

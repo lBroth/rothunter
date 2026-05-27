@@ -88,9 +88,9 @@ const UI_DIST = (() => {
   if (override && isBuiltUiDir(override)) return override;
   const here = import.meta.dirname;
   const candidates = [
-    path.resolve(here, '../ui'),             // npm-installed (dist/ui)
+    path.resolve(here, '../ui'), // npm-installed (dist/ui)
     path.resolve(here, '../../src/ui/dist'), // dev / clone-and-run
-    path.resolve(here, '../ui/dist'),        // docker tsx-from-source
+    path.resolve(here, '../ui/dist'), // docker tsx-from-source
   ];
   for (const c of candidates) {
     if (isBuiltUiDir(c)) return c;
@@ -349,26 +349,31 @@ app.post<{ Body: { path: string } }>('/api/workspace', async (req, reply) => {
   return { current: target, recent: getRecentWorkspaces() };
 });
 
-app.post<{ Body: { detectors?: string[]; minConfidence?: number } }>('/api/scans', async (req, reply) => {
-  const queued = getScanQueueLength() + (getRunningScanId() ? 1 : 0);
-  if (queued >= SCAN_QUEUE_LIMIT) {
-    return reply
-      .code(429)
-      .send({ error: `scan queue full (${queued}/${SCAN_QUEUE_LIMIT}); wait for the current scan to finish` });
-  }
-  const body = req.body ?? {};
-  // When the caller doesn't pin detectors, derive the allow-list from
-  // persisted settings — only the ones the operator left toggled ON run.
-  const allowFromSettings = ALL_DETECTORS.filter((id) => SETTINGS.detectors[id] !== false);
-  const scanId = await startScan({
-    workspaceRoot: getWorkspaceRoot(),
-    detectorsAllow: body.detectors ?? allowFromSettings,
-    minConfidence: body.minConfidence ?? SETTINGS.minConfidence,
-    llmConcurrency: SETTINGS.llmConcurrency,
-    llmAutoFpThreshold: SETTINGS.llmAutoFpThreshold,
-  });
-  return { scanId, queuePosition: getScanQueueLength() };
-});
+app.post<{ Body: { detectors?: string[]; minConfidence?: number } }>(
+  '/api/scans',
+  async (req, reply) => {
+    const queued = getScanQueueLength() + (getRunningScanId() ? 1 : 0);
+    if (queued >= SCAN_QUEUE_LIMIT) {
+      return reply
+        .code(429)
+        .send({
+          error: `scan queue full (${queued}/${SCAN_QUEUE_LIMIT}); wait for the current scan to finish`,
+        });
+    }
+    const body = req.body ?? {};
+    // When the caller doesn't pin detectors, derive the allow-list from
+    // persisted settings — only the ones the operator left toggled ON run.
+    const allowFromSettings = ALL_DETECTORS.filter((id) => SETTINGS.detectors[id] !== false);
+    const scanId = await startScan({
+      workspaceRoot: getWorkspaceRoot(),
+      detectorsAllow: body.detectors ?? allowFromSettings,
+      minConfidence: body.minConfidence ?? SETTINGS.minConfidence,
+      llmConcurrency: SETTINGS.llmConcurrency,
+      llmAutoFpThreshold: SETTINGS.llmAutoFpThreshold,
+    });
+    return { scanId, queuePosition: getScanQueueLength() };
+  },
+);
 
 /**
  * GET /api/settings — current in-process settings. Includes the active
@@ -417,13 +422,21 @@ app.post<{
 }>('/api/settings', async (req, reply) => {
   const body = req.body ?? {};
   if (body.minConfidence != null) {
-    if (typeof body.minConfidence !== 'number' || body.minConfidence < 0 || body.minConfidence > 1) {
+    if (
+      typeof body.minConfidence !== 'number' ||
+      body.minConfidence < 0 ||
+      body.minConfidence > 1
+    ) {
       return reply.code(400).send({ error: 'minConfidence must be in [0, 1]' });
     }
     SETTINGS.minConfidence = body.minConfidence;
   }
   if (body.llmConcurrency != null) {
-    if (typeof body.llmConcurrency !== 'number' || body.llmConcurrency < 1 || body.llmConcurrency > 16) {
+    if (
+      typeof body.llmConcurrency !== 'number' ||
+      body.llmConcurrency < 1 ||
+      body.llmConcurrency > 16
+    ) {
       return reply.code(400).send({ error: 'llmConcurrency must be in [1, 16]' });
     }
     SETTINGS.llmConcurrency = Math.floor(body.llmConcurrency);
@@ -564,10 +577,13 @@ app.get('/api/llm/health', async (_, reply) => {
   const started = Date.now();
   try {
     const r = await fetch(healthUrl, { signal: AbortSignal.timeout(2500) });
-    if (!r.ok) return reply.code(502).send({ ok: false, status: r.status, latencyMs: Date.now() - started });
+    if (!r.ok)
+      return reply.code(502).send({ ok: false, status: r.status, latencyMs: Date.now() - started });
     return { ok: true, status: r.status, latencyMs: Date.now() - started, url: healthUrl };
   } catch (err) {
-    return reply.code(502).send({ ok: false, error: (err as Error).message, latencyMs: Date.now() - started });
+    return reply
+      .code(502)
+      .send({ ok: false, error: (err as Error).message, latencyMs: Date.now() - started });
   }
 });
 
@@ -625,7 +641,9 @@ app.post<{ Params: { fp: string } }>('/api/findings/:fp/rerun', async (req, repl
 
   const filesFromEvidence = Array.from(new Set(finding.evidence.map((e) => e.file)));
   if (filesFromEvidence.length === 0) {
-    return reply.code(422).send({ status: 'unsupported', reason: 'finding has no file evidence to re-check' });
+    return reply
+      .code(422)
+      .send({ status: 'unsupported', reason: 'finding has no file evidence to re-check' });
   }
 
   // Multi-workspace findings carry workspace-prefixed paths
@@ -644,7 +662,8 @@ app.post<{ Params: { fp: string } }>('/api/findings/:fp/rerun', async (req, repl
   if (looksMultiWorkspace) {
     return reply.code(422).send({
       status: 'unsupported',
-      reason: 'single-finding rerun does not support multi-workspace findings yet — kick off a full scan to refresh this finding',
+      reason:
+        'single-finding rerun does not support multi-workspace findings yet — kick off a full scan to refresh this finding',
     });
   }
 
@@ -914,7 +933,11 @@ app.get<{ Params: { scanId: string } }>('/api/scans/:scanId/stream', (req, reply
     }
     // Final state snapshot last so the UI's state machine lands on the
     // current phase after consuming all the historical events above.
-    const snapshot: ScanSseEvent = current.progress ?? { scanId, ts: Date.now(), state: current.state };
+    const snapshot: ScanSseEvent = current.progress ?? {
+      scanId,
+      ts: Date.now(),
+      state: current.state,
+    };
     reply.raw.write(`data: ${JSON.stringify(snapshot)}\n\n`);
   }
 
@@ -986,9 +1009,7 @@ app.get<{ Querystring: { window?: string } }>('/api/scans/series', async (req) =
     entries.length === 0
       ? null
       : Math.round(
-          entries
-            .map((e) => e.durationMs ?? 0)
-            .reduce((a, b) => a + b, 0) / entries.length,
+          entries.map((e) => e.durationMs ?? 0).reduce((a, b) => a + b, 0) / entries.length,
         );
   // Average verdict latency across the window — only counts scans that
   // emitted at least one verdict so empty fast scans don't pull the mean
@@ -1116,19 +1137,22 @@ app.delete<{ Params: { fp: string } }>('/api/findings/:fp/false-positive', async
  * Remove ⇒ FP store loses the fingerprint, kept-open store gets it.
  * That two-store dance is what makes the UI's Unmark button stick.
  */
-app.post<{ Body: { add?: string[]; remove?: string[] } }>('/api/false-positives/batch', async (req) => {
-  const body = req.body ?? {};
-  const add = body.add ?? [];
-  const remove = body.remove ?? [];
-  await mutateKeptOpen((s) => {
-    for (const fp of add) s.delete(fp);
-    for (const fp of remove) s.add(fp);
-  });
-  return mutateFalsePositives((s) => {
-    for (const fp of add) s.add(fp);
-    for (const fp of remove) s.delete(fp);
-  });
-});
+app.post<{ Body: { add?: string[]; remove?: string[] } }>(
+  '/api/false-positives/batch',
+  async (req) => {
+    const body = req.body ?? {};
+    const add = body.add ?? [];
+    const remove = body.remove ?? [];
+    await mutateKeptOpen((s) => {
+      for (const fp of add) s.delete(fp);
+      for (const fp of remove) s.add(fp);
+    });
+    return mutateFalsePositives((s) => {
+      for (const fp of add) s.add(fp);
+      for (const fp of remove) s.delete(fp);
+    });
+  },
+);
 
 app.get('/api/false-positives', async () => {
   const set = readFalsePositives(getWorkspaceRoot());
@@ -1229,13 +1253,16 @@ app.delete<{ Params: { fp: string } }>('/api/findings/:fp/mark-to-fix', async (r
  * (operator marked 88 findings, file ended with 11). This endpoint
  * mutates the set in one critical section.
  */
-app.post<{ Body: { add?: string[]; remove?: string[] } }>('/api/marked-to-fix/batch', async (req) => {
-  const body = req.body ?? {};
-  return mutateMarkedToFix((s) => {
-    for (const fp of body.add ?? []) s.add(fp);
-    for (const fp of body.remove ?? []) s.delete(fp);
-  });
-});
+app.post<{ Body: { add?: string[]; remove?: string[] } }>(
+  '/api/marked-to-fix/batch',
+  async (req) => {
+    const body = req.body ?? {};
+    return mutateMarkedToFix((s) => {
+      for (const fp of body.add ?? []) s.add(fp);
+      for (const fp of body.remove ?? []) s.delete(fp);
+    });
+  },
+);
 
 // Serialise read-modify-write on the marked-to-fix store. The
 // `mutationQueue` chains every incoming request behind the previous
@@ -1266,7 +1293,8 @@ app.get('/api/marked-to-fix', async () => {
   const seen = new Map<string, Finding>();
   for (const s of scans.values()) {
     if (s.workspaceRoot !== ws || !s.findings) continue;
-    for (const f of s.findings) if (set.has(f.fingerprint) && !seen.has(f.fingerprint)) seen.set(f.fingerprint, f);
+    for (const f of s.findings)
+      if (set.has(f.fingerprint) && !seen.has(f.fingerprint)) seen.set(f.fingerprint, f);
   }
   if (seen.size < set.size) {
     const hist = await loadScanHistory(ws);
@@ -1315,7 +1343,9 @@ app.post('/api/marked-to-fix/prompt', async (_req, reply) => {
     }
   }
   if (findings.length === 0) {
-    return reply.code(404).send({ error: 'marked fingerprints have no matching findings on record' });
+    return reply
+      .code(404)
+      .send({ error: 'marked fingerprints have no matching findings on record' });
   }
 
   const prompt = renderCombinedFixPrompt(findings);
@@ -1648,7 +1678,10 @@ app.get<{ Params: { name: string }; Querystring: { file?: string } }>(
       if (!imp.target) continue;
       if (imp.target === pick.file && imp.source !== pick.file) {
         // Only count the import if it actually pulled this symbol.
-        const consumed = imp.namedImports.includes(pick.name) || imp.defaultImport === pick.name || imp.namespaceAlias;
+        const consumed =
+          imp.namedImports.includes(pick.name) ||
+          imp.defaultImport === pick.name ||
+          imp.namespaceAlias;
         if (consumed) callers.push(imp.source);
       }
       if (imp.source === pick.file && imp.target !== pick.file) {
@@ -1672,7 +1705,9 @@ function dedup<T>(xs: T[]): T[] {
   return [...new Set(xs)];
 }
 
-async function loadLatestFindingsIndex(): Promise<Map<string, { h: number; m: number; l: number }>> {
+async function loadLatestFindingsIndex(): Promise<
+  Map<string, { h: number; m: number; l: number }>
+> {
   const out = new Map<string, { h: number; m: number; l: number }>();
   // Prefer the in-memory latest done scan, fall back to disk.
   let findings: Finding[] | undefined;

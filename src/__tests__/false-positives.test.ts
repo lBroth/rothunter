@@ -31,7 +31,10 @@ interface FindingLike {
   detectorId: string;
 }
 
-function splitFalsePositives(findings: FindingLike[], fp: Set<string>): {
+function splitFalsePositives(
+  findings: FindingLike[],
+  fp: Set<string>,
+): {
   findings: FindingLike[];
   falsePositives: FindingLike[];
 } {
@@ -99,14 +102,20 @@ describe('false-positives store', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rothunter-fp-unmark-'));
     try {
       writeFalsePositives(root, new Set(['x']));
-      const before = splitFalsePositives([{ fingerprint: 'x', detectorId: 'd' }], readFalsePositives(root));
+      const before = splitFalsePositives(
+        [{ fingerprint: 'x', detectorId: 'd' }],
+        readFalsePositives(root),
+      );
       expect(before.falsePositives).toHaveLength(1);
 
       const set = readFalsePositives(root);
       set.delete('x');
       writeFalsePositives(root, set);
 
-      const after = splitFalsePositives([{ fingerprint: 'x', detectorId: 'd' }], readFalsePositives(root));
+      const after = splitFalsePositives(
+        [{ fingerprint: 'x', detectorId: 'd' }],
+        readFalsePositives(root),
+      );
       expect(after.findings).toHaveLength(1);
       expect(after.falsePositives).toEqual([]);
     } finally {

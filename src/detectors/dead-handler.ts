@@ -47,4 +47,3 @@ export function detectDeadHandlers(input: DeadHandlerDetectorInput): Finding[] {
   }
   return findings;
 }
-

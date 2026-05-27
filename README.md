@@ -27,19 +27,19 @@ Full detector list with severities + tunables: [`docs/DETECTORS.md`](./docs/DETE
 
 ### Coverage by mode
 
-| Mode | Detectors |
-|---|---|
-| Single-workspace | All 24 |
+| Mode                                                     | Detectors                                                                                                                                                                                                                             |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Single-workspace                                         | All 24                                                                                                                                                                                                                                |
 | Multi-workspace (cross-repo via `rothunter.config.json`) | 9 cross-repo always-on (duplicate-type, duplicate-function, dead-module, dead-export, dead-api, long-function, deep-nesting, public-any, hot-hub-file) + the remaining 15 looped per workspace with workspace-namespaced fingerprints |
 
 ## What you actually get
 
 rothunter has TWO independent pieces:
 
-| Piece | What it does | Where it runs |
-|---|---|---|
-| **Engine + dashboard** (`rothunter`) | parses your repo, runs 24 detectors, serves the Fastify API + React UI on `:3000` | this is what the npm package / docker image ships |
-| **LLM** (any OpenAI-compatible endpoint) | answers the verdict prompts ("is this finding real or intentional?") — typically `llama.cpp` with Qwen2.5-Coder-14B | runs separately, you point rothunter at it |
+| Piece                                    | What it does                                                                                                        | Where it runs                                     |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| **Engine + dashboard** (`rothunter`)     | parses your repo, runs 24 detectors, serves the Fastify API + React UI on `:3000`                                   | this is what the npm package / docker image ships |
+| **LLM** (any OpenAI-compatible endpoint) | answers the verdict prompts ("is this finding real or intentional?") — typically `llama.cpp` with Qwen2.5-Coder-14B | runs separately, you point rothunter at it        |
 
 The engine runs WITHOUT the LLM — the deterministic detectors still
 fire, you just don't get the verdict pass that auto-filters the FPs.
@@ -112,14 +112,14 @@ src/
 
 Every knob is an environment variable; see [`.env.example`](./.env.example) for the full list with defaults. The most common:
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `ROTHUNTER_PORT` | `3000` | HTTP API port |
-| `ROTHUNTER_HOST` | `127.0.0.1` | Bind address — `0.0.0.0` exposes the API to LAN |
-| `ROTHUNTER_FS_ROOTS` | `$HOME` (+ `/workspace` in docker) | Colon-separated allow-roots for workspace switches |
-| `ROTHUNTER_LLM_BASE_URL` | `http://127.0.0.1:8080/v1` | OpenAI-compatible LLM endpoint |
-| `ROTHUNTER_LLM_MODEL` | `bartowski/Qwen2.5-Coder-14B-Instruct-GGUF` | HF repo id |
-| `ROTHUNTER_LLM_CONCURRENCY` | `min(8, cores / 2)` | Parallel verdict requests |
+| Variable                    | Default                                     | Purpose                                            |
+| --------------------------- | ------------------------------------------- | -------------------------------------------------- |
+| `ROTHUNTER_PORT`            | `3000`                                      | HTTP API port                                      |
+| `ROTHUNTER_HOST`            | `127.0.0.1`                                 | Bind address — `0.0.0.0` exposes the API to LAN    |
+| `ROTHUNTER_FS_ROOTS`        | `$HOME` (+ `/workspace` in docker)          | Colon-separated allow-roots for workspace switches |
+| `ROTHUNTER_LLM_BASE_URL`    | `http://127.0.0.1:8080/v1`                  | OpenAI-compatible LLM endpoint                     |
+| `ROTHUNTER_LLM_MODEL`       | `bartowski/Qwen2.5-Coder-14B-Instruct-GGUF` | HF repo id                                         |
+| `ROTHUNTER_LLM_CONCURRENCY` | `min(8, cores / 2)`                         | Parallel verdict requests                          |
 
 ## Security model
 

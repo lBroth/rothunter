@@ -22,15 +22,15 @@ export function detectDeepNesting(input: DeepNestingDetectorInput): Finding[] {
     if (sym.kind !== 'function') continue;
     const depth = maxNestingDepth(sym.source);
     if (depth < low) continue;
-    const severity: 'high' | 'medium' | 'low' = depth >= high ? 'high' : depth >= med ? 'medium' : 'low';
+    const severity: 'high' | 'medium' | 'low' =
+      depth >= high ? 'high' : depth >= med ? 'medium' : 'low';
     findings.push({
       detectorId: 'deep-nesting',
       severity,
       confidence: 0.85,
       layer: 1,
       title: `Deeply nested function: \`${sym.name}\` (depth ${depth}) in ${sym.file}`,
-      description:
-        `\`${sym.name}\` reaches ${depth} levels of nested control flow. Past depth 4 the reader has to track too many active conditions at once.`,
+      description: `\`${sym.name}\` reaches ${depth} levels of nested control flow. Past depth 4 the reader has to track too many active conditions at once.`,
       evidence: [
         {
           file: sym.file,
@@ -65,7 +65,8 @@ function maxNestingDepth(source: string): number {
     const c = masked[i]!;
     if (c === '{') {
       const before = masked.slice(Math.max(0, i - 20), i);
-      const isControl = /\b(?:if|else|for|while|switch|try|catch|finally|do)\b\s*(?:\([^)]*\)\s*)?$/.test(before);
+      const isControl =
+        /\b(?:if|else|for|while|switch|try|catch|finally|do)\b\s*(?:\([^)]*\)\s*)?$/.test(before);
       stack.push(isControl ? 'control' : 'other');
       if (isControl) {
         depth++;
@@ -137,4 +138,3 @@ function maskStringsAndComments(raw: string): string {
   }
   return out;
 }
-

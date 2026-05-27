@@ -112,10 +112,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
             label="p50 verdict"
             value={summary?.avgVerdictMs ? `${summary.avgVerdictMs} ms` : '—'}
           />
-          <KpiCell
-            label="p95 verdict"
-            value={summary?.avgP95Ms ? `${summary.avgP95Ms} ms` : '—'}
-          />
+          <KpiCell label="p95 verdict" value={summary?.avgP95Ms ? `${summary.avgP95Ms} ms` : '—'} />
           <KpiCell
             label="avg scan"
             value={
@@ -150,9 +147,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                 <li key={e.scanId} className="px-4 py-3 flex items-start gap-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      onOpenScan?.(e.scanId)
-                    }
+                    onClick={() => onOpenScan?.(e.scanId)}
                     className="flex-1 text-left hover:bg-bg flex flex-col gap-1 text-xs font-mono"
                   >
                     <div className="flex items-center gap-2">
@@ -219,9 +214,7 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                   >
                     <td
                       className="pl-5 py-2.5 font-mono text-xs text-ink cursor-pointer"
-                      onClick={() =>
-                        onOpenScan?.(e.scanId)
-                      }
+                      onClick={() => onOpenScan?.(e.scanId)}
                     >
                       <span className="flex items-center gap-2">
                         <span
@@ -236,17 +229,13 @@ export function History({ onOpenScan }: HistoryProps): JSX.Element {
                     </td>
                     <td
                       className="py-2.5 font-mono text-xs text-muted cursor-pointer"
-                      onClick={() =>
-                        onOpenScan?.(e.scanId)
-                      }
+                      onClick={() => onOpenScan?.(e.scanId)}
                     >
                       {relative(e.startedAt)}
                     </td>
                     <td
                       className="py-2.5 font-mono text-xs text-muted cursor-pointer"
-                      onClick={() =>
-                        onOpenScan?.(e.scanId)
-                      }
+                      onClick={() => onOpenScan?.(e.scanId)}
                     >
                       {e.durationMs ? formatDuration(Math.round(e.durationMs / 1000)) : '—'}
                     </td>

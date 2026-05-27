@@ -60,7 +60,8 @@ describe('dead-export detector', () => {
 
   it('treats `import * as ns from ...` as consuming every export of the target', async () => {
     const root = await setupWorkspace({
-      'index.ts': "import * as utils from './lib';\nexport function main(): void { utils.useIt(); }\n",
+      'index.ts':
+        "import * as utils from './lib';\nexport function main(): void { utils.useIt(); }\n",
       'lib.ts': 'export function useIt(): void {}\nexport function unusedHere(): void {}\n',
     });
     try {
@@ -91,7 +92,8 @@ describe('dead-export detector', () => {
 
   it('preserves alias-LHS as the export-key when imported via `import { a as b }`', async () => {
     const root = await setupWorkspace({
-      'index.ts': "import { actualName as renamed } from './lib';\nexport function main(): void { renamed(); }\n",
+      'index.ts':
+        "import { actualName as renamed } from './lib';\nexport function main(): void { renamed(); }\n",
       'lib.ts': 'export function actualName(): void {}\nexport function reallyDead(): void {}\n',
     });
     try {
@@ -126,7 +128,8 @@ describe('dead-export detector', () => {
 
   it('does NOT flag an interface used as parameter type of a sibling exported function', async () => {
     const root = await setupWorkspace({
-      'index.ts': "import { use } from './lib';\nexport function main(): void { use({ ok: true }); }\n",
+      'index.ts':
+        "import { use } from './lib';\nexport function main(): void { use({ ok: true }); }\n",
       'lib.ts':
         'export interface Opts { ok: boolean }\n' +
         'export function use(opts: Opts): void { void opts; }\n',
@@ -144,9 +147,7 @@ describe('dead-export detector', () => {
   it('still flags a type-alias used by NOTHING in the same file', async () => {
     const root = await setupWorkspace({
       'index.ts': "import { x } from './lib';\nexport function main(): void { x(); }\n",
-      'lib.ts':
-        'export type Ghost = { id: string };\n' +
-        'export function x(): void {}\n',
+      'lib.ts': 'export type Ghost = { id: string };\n' + 'export function x(): void {}\n',
     });
     try {
       const { parsed, symbols, entryPoints } = await scan(root);
@@ -162,7 +163,8 @@ describe('dead-export detector', () => {
     const root = await setupWorkspace({
       'index.ts': "import { v } from './fixtures-host';\nexport function main(): void { v(); }\n",
       'fixtures-host.ts': "export { v } from './__fixtures__/data';\n",
-      '__fixtures__/data.ts': 'export function v(): void {}\nexport function alsoUnused(): void {}\n',
+      '__fixtures__/data.ts':
+        'export function v(): void {}\nexport function alsoUnused(): void {}\n',
       'types.d.ts': 'export interface Ghost { id: string; }\n',
     });
     try {

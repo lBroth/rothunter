@@ -412,7 +412,9 @@ export async function importProfile(name: string, email: string): Promise<void> 
         files: ['src/api/a.ts', 'src/jobs/b.ts'],
       });
       const titles = findings.map((f) => f.title);
-      expect(titles).toEqual(expect.arrayContaining([expect.stringContaining('profile.displayName')]));
+      expect(titles).toEqual(
+        expect.arrayContaining([expect.stringContaining('profile.displayName')]),
+      );
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -520,9 +522,7 @@ export async function sync(email: string): Promise<void> {
       });
       const titles = findings.map((f) => f.title);
       // Entities are lowercased before clustering — `usersTable` → `userstable`.
-      expect(titles).toEqual(
-        expect.arrayContaining([expect.stringContaining('userstable.email')]),
-      );
+      expect(titles).toEqual(expect.arrayContaining([expect.stringContaining('userstable.email')]));
       expect(titles.some((t) => t.includes('drizzle'))).toBe(true);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });

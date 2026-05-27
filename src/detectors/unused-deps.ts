@@ -50,8 +50,7 @@ export function detectUnusedDeps(input: UnusedDepsDetectorInput): Finding[] {
       confidence: 0.85,
       layer: 1,
       title: `Unused dependency: \`${dep}\` in package.json`,
-      description:
-        `\`${dep}\` is declared in \`dependencies\` (or \`peerDependencies\`) but never imported across the workspace. Unused deps inflate the lockfile + the install footprint and complicate audits.`,
+      description: `\`${dep}\` is declared in \`dependencies\` (or \`peerDependencies\`) but never imported across the workspace. Unused deps inflate the lockfile + the install footprint and complicate audits.`,
       evidence: [
         {
           file: 'package.json',
@@ -59,8 +58,7 @@ export function detectUnusedDeps(input: UnusedDepsDetectorInput): Finding[] {
           snippet: snippetAround(raw, line),
         },
       ],
-      suggestion:
-        `If genuinely unused, run \`npm uninstall ${dep}\` (or your package manager's equivalent). If the dep is loaded by name at runtime (plugin/CLI/loader pattern), add it to the runtime-loader allow-list.`,
+      suggestion: `If genuinely unused, run \`npm uninstall ${dep}\` (or your package manager's equivalent). If the dep is loaded by name at runtime (plugin/CLI/loader pattern), add it to the runtime-loader allow-list.`,
       fingerprint: `unused-deps:${stableHash(dep)}`,
     });
   }
@@ -100,10 +98,37 @@ function parsePackageName(specifier: string): string | null {
 }
 
 const BUILTINS = new Set<string>([
-  'fs', 'path', 'os', 'http', 'https', 'crypto', 'util', 'events', 'stream', 'buffer',
-  'child_process', 'url', 'querystring', 'zlib', 'tty', 'net', 'tls', 'dns', 'cluster',
-  'worker_threads', 'perf_hooks', 'assert', 'process', 'readline', 'string_decoder',
-  'vm', 'v8', 'inspector', 'async_hooks', 'timers', 'dgram',
+  'fs',
+  'path',
+  'os',
+  'http',
+  'https',
+  'crypto',
+  'util',
+  'events',
+  'stream',
+  'buffer',
+  'child_process',
+  'url',
+  'querystring',
+  'zlib',
+  'tty',
+  'net',
+  'tls',
+  'dns',
+  'cluster',
+  'worker_threads',
+  'perf_hooks',
+  'assert',
+  'process',
+  'readline',
+  'string_decoder',
+  'vm',
+  'v8',
+  'inspector',
+  'async_hooks',
+  'timers',
+  'dgram',
 ]);
 
 function findLineInJson(raw: string, key: string): number {
@@ -113,11 +138,9 @@ function findLineInJson(raw: string, key: string): number {
   return raw.slice(0, m.index).split('\n').length;
 }
 
-
 function snippetAround(raw: string, line: number): string {
   const lines = raw.split('\n');
   const from = Math.max(0, line - 1);
   const to = Math.min(lines.length, line + 1);
   return lines.slice(from, to).join('\n');
 }
-

@@ -34,15 +34,19 @@ describe('deep-nesting detector', () => {
   });
 
   it('escalates to MED then HIGH', () => {
-    const src5 = "function f() { if(a){ if(b){ if(c){ if(d){ if(e){ x; }}}}} }";
-    const src6 = "function f() { if(a){ if(b){ if(c){ if(d){ if(e){ if(g){ x; }}}}}} }";
+    const src5 = 'function f() { if(a){ if(b){ if(c){ if(d){ if(e){ x; }}}}} }';
+    const src6 = 'function f() { if(a){ if(b){ if(c){ if(d){ if(e){ if(g){ x; }}}}}} }';
     const findings = detectDeepNesting({ symbols: [fn('m', src5), fn('h', src6)] });
-    expect(findings.find((f) => f.title.startsWith('Deeply nested function: `m`'))!.severity).toBe('medium');
-    expect(findings.find((f) => f.title.startsWith('Deeply nested function: `h`'))!.severity).toBe('high');
+    expect(findings.find((f) => f.title.startsWith('Deeply nested function: `m`'))!.severity).toBe(
+      'medium',
+    );
+    expect(findings.find((f) => f.title.startsWith('Deeply nested function: `h`'))!.severity).toBe(
+      'high',
+    );
   });
 
   it('ignores shallow functions', () => {
-    const src = "function f() { if (a) { return 1; } }";
+    const src = 'function f() { if (a) { return 1; } }';
     expect(detectDeepNesting({ symbols: [fn('shallow', src)] })).toEqual([]);
   });
 

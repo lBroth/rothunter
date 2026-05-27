@@ -102,43 +102,42 @@ export interface HandlerB {
     if (workspace) fs.rmSync(workspace, { recursive: true, force: true });
   });
 
-  it(
-    'reports the clear duplicate, runs LLM on the borderline cluster, and leaves the regression guard alone',
-    async () => {
-      const rothunter = new RotHunter();
-      const llm = createDefaultLlmClient();
-      const result = await rothunter.run({
-        workspaceRoot: workspace,
-        llm,
-        llmRejectionThreshold: 0.7,
-      });
+  it('reports the clear duplicate, runs LLM on the borderline cluster, and leaves the regression guard alone', async () => {
+    const rothunter = new RotHunter();
+    const llm = createDefaultLlmClient();
+    const result = await rothunter.run({
+      workspaceRoot: workspace,
+      llm,
+      llmRejectionThreshold: 0.7,
+    });
 
-      const dupTypeFindings = result.findings.filter((f) => f.detectorId === 'duplicate-type');
+    const dupTypeFindings = result.findings.filter((f) => f.detectorId === 'duplicate-type');
 
-      // 1. Clear duplicate present
-      const userDup = dupTypeFindings.find((f) =>
+    // 1. Clear duplicate present
+    const userDup = dupTypeFindings.find(
+      (f) =>
         f.evidence.some((e) => e.snippet.includes('interface UserA')) &&
         f.evidence.some((e) => e.snippet.includes('interface UserB')),
-      );
-      expect(userDup).toBeDefined();
-      expect(userDup?.fingerprint).toMatch(/^dup-type:strict:/);
-      expect(userDup?.confidence).toBeGreaterThanOrEqual(0.95);
+    );
+    expect(userDup).toBeDefined();
+    expect(userDup?.fingerprint).toMatch(/^dup-type:strict:/);
+    expect(userDup?.confidence).toBeGreaterThanOrEqual(0.95);
 
-      // 2. Borderline cluster reached the LLM (description appended with rejection or confirmation note).
-      const borderline = dupTypeFindings.find((f) =>
+    // 2. Borderline cluster reached the LLM (description appended with rejection or confirmation note).
+    const borderline = dupTypeFindings.find(
+      (f) =>
         f.evidence.some((e) => e.snippet.includes('interface BillingAccount')) &&
         f.evidence.some((e) => e.snippet.includes('interface NotificationTemplate')),
-      );
-      expect(borderline).toBeDefined();
-      expect(borderline?.description).toMatch(/LLM (confirmation|rejection)/);
+    );
+    expect(borderline).toBeDefined();
+    expect(borderline?.description).toMatch(/LLM (confirmation|rejection)/);
 
-      // 3. Handler regression guard must NOT cluster
-      const handlerCluster = dupTypeFindings.find((f) =>
+    // 3. Handler regression guard must NOT cluster
+    const handlerCluster = dupTypeFindings.find(
+      (f) =>
         f.evidence.some((e) => e.snippet.includes('interface HandlerA')) ||
         f.evidence.some((e) => e.snippet.includes('interface HandlerB')),
-      );
-      expect(handlerCluster).toBeUndefined();
-    },
-    600_000, // up to 10 min — single LLM call on local CPU can be slow on cold start
-  );
+    );
+    expect(handlerCluster).toBeUndefined();
+  }, 600_000); // up to 10 min — single LLM call on local CPU can be slow on cold start
 });

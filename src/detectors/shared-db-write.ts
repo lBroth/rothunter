@@ -153,13 +153,7 @@ function matchAdapters(call: CallExpression): AdapterMatch | null {
 
 // ---------- Prisma --------------------------------------------------------
 
-const PRISMA_WRITE_METHODS = new Set([
-  'update',
-  'updateMany',
-  'upsert',
-  'create',
-  'createMany',
-]);
+const PRISMA_WRITE_METHODS = new Set(['update', 'updateMany', 'upsert', 'create', 'createMany']);
 
 function matchPrisma(call: CallExpression): AdapterMatch | null {
   const callee = call.getExpression();
@@ -237,7 +231,8 @@ function matchSequelize(call: CallExpression): AdapterMatch | null {
   if (callee.getKind() !== SyntaxKind.PropertyAccessExpression) return null;
   const pa = callee.asKindOrThrow(SyntaxKind.PropertyAccessExpression);
   const method = pa.getName();
-  if (method !== 'update' && method !== 'upsert' && method !== 'create' && method !== 'bulkCreate') return null;
+  if (method !== 'update' && method !== 'upsert' && method !== 'create' && method !== 'bulkCreate')
+    return null;
   const head = pa.getExpression();
   if (head.getKind() !== SyntaxKind.Identifier) return null;
   const entity = head.getText();
@@ -335,7 +330,8 @@ function matchTypeOrm(call: CallExpression): AdapterMatch | null {
     const inner = head.asKind(SyntaxKind.CallExpression);
     if (!inner) return null;
     const innerName = inner.getExpression().getText();
-    if (!/(^|\.)getRepository$|getMongoRepository$|getCustomRepository$/.test(innerName)) return null;
+    if (!/(^|\.)getRepository$|getMongoRepository$|getCustomRepository$/.test(innerName))
+      return null;
     const innerArgs = inner.getArguments();
     if (innerArgs.length === 0 || innerArgs[0]!.getKind() !== SyntaxKind.Identifier) return null;
     entity = innerArgs[0]!.getText();
@@ -347,10 +343,12 @@ function matchTypeOrm(call: CallExpression): AdapterMatch | null {
   const cols = new Set<string>();
   if (method === 'update' && args.length >= 2) {
     const obj = args[1]!;
-    if (obj.getKind() === SyntaxKind.ObjectLiteralExpression) collectPropertyNames(obj as Node, cols);
+    if (obj.getKind() === SyntaxKind.ObjectLiteralExpression)
+      collectPropertyNames(obj as Node, cols);
   } else if (method === 'save') {
     const obj = args[0]!;
-    if (obj.getKind() === SyntaxKind.ObjectLiteralExpression) collectPropertyNames(obj as Node, cols);
+    if (obj.getKind() === SyntaxKind.ObjectLiteralExpression)
+      collectPropertyNames(obj as Node, cols);
   } else {
     return null;
   }
@@ -495,7 +493,9 @@ function findKnexTable(node: Node): string | null {
           (first.getKind() === SyntaxKind.StringLiteral ||
             first.getKind() === SyntaxKind.NoSubstitutionTemplateLiteral)
         ) {
-          const lit = first.asKind(SyntaxKind.StringLiteral) ?? first.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
+          const lit =
+            first.asKind(SyntaxKind.StringLiteral) ??
+            first.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
           if (lit) return lit.getLiteralText();
         }
       }
@@ -567,7 +567,9 @@ function matchRawSql(call: CallExpression): AdapterMatch | null {
     }
     const [first] = call.getArguments();
     if (!first) return null;
-    const stringLit = first.asKind(SyntaxKind.StringLiteral) ?? first.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
+    const stringLit =
+      first.asKind(SyntaxKind.StringLiteral) ??
+      first.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
     if (stringLit) {
       sqlText = stringLit.getLiteralText();
     } else if (first.getKind() === SyntaxKind.TemplateExpression) {
@@ -578,7 +580,11 @@ function matchRawSql(call: CallExpression): AdapterMatch | null {
   if (!sqlText) return null;
   const parsed = parseSqlWrite(sqlText);
   if (!parsed) return null;
-  return { adapter: 'raw-sql', entity: parsed.table.toLowerCase(), columns: new Set(parsed.columns) };
+  return {
+    adapter: 'raw-sql',
+    entity: parsed.table.toLowerCase(),
+    columns: new Set(parsed.columns),
+  };
 }
 
 /**
@@ -588,7 +594,10 @@ function matchRawSql(call: CallExpression): AdapterMatch | null {
  *   INSERT INTO <table> (<col>, <col>, …) VALUES (…)
  */
 function parseSqlWrite(sql: string): { table: string; columns: string[] } | null {
-  const cleaned = sql.replace(/--[^\n]*/g, '').replace(/\s+/g, ' ').trim();
+  const cleaned = sql
+    .replace(/--[^\n]*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   // UPDATE ... SET col=..., col=...
   const upd = /^update\s+([\w."]+)\s+set\s+(.+?)(?:\swhere\s|$)/i.exec(cleaned);
   if (upd) {
@@ -659,6 +668,3 @@ function findEnclosingFunction(node: Node): Node | null {
   }
   return null;
 }
-
-
-

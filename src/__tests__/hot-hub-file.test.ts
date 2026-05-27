@@ -12,7 +12,9 @@ function graphWith(incoming: Record<string, number>): ImportGraph {
 
 describe('hot-hub-file detector', () => {
   it('flags files imported by >= 20 (default)', () => {
-    const findings = detectHotHubFiles({ graph: graphWith({ 'src/utils.ts': 25, 'src/small.ts': 3 }) });
+    const findings = detectHotHubFiles({
+      graph: graphWith({ 'src/utils.ts': 25, 'src/small.ts': 3 }),
+    });
     expect(findings).toHaveLength(1);
     expect(findings[0]!.title).toMatch(/src\/utils\.ts/);
     expect(findings[0]!.title).toMatch(/25 importers/);

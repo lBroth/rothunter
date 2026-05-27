@@ -8,6 +8,9 @@ src/__fixtures__
 src/ui/public/fonts
 src/mockups
 private
+# Landing page + vendored third-party assets (tailwind, …). Matches
+# the eslint.config.js ignore so both linters see the same scope.
+site
 package-lock.json
 *.tsbuildinfo
 .next

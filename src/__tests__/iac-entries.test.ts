@@ -19,8 +19,10 @@ async function setup(files: Record<string, string>): Promise<string> {
 describe('entry-points: framework conventions', () => {
   it('treats Next.js app-router route handlers as entry points', async () => {
     const root = await setup({
-      'app/api/users/route.ts': 'export async function GET(): Promise<Response> { return new Response("ok"); }\n',
-      'src/app/api/products/route.ts': 'export async function POST(): Promise<Response> { return new Response("ok"); }\n',
+      'app/api/users/route.ts':
+        'export async function GET(): Promise<Response> { return new Response("ok"); }\n',
+      'src/app/api/products/route.ts':
+        'export async function POST(): Promise<Response> { return new Response("ok"); }\n',
       'pages/api/legacy.ts': 'export default function handler(): void {}\n',
       'middleware.ts': 'export function middleware(): Response { return new Response("ok"); }\n',
       'src/orphan.ts': 'export function lonely(): void {}\n',
@@ -42,11 +44,13 @@ describe('entry-points: framework conventions', () => {
   it('treats Netlify functions, Vercel /api, AWS Lambda layouts as entry points', async () => {
     const root = await setup({
       'netlify/functions/foo.ts': 'export const handler = async (): Promise<void> => {};\n',
-      'netlify/edge-functions/edge.ts': 'export default async (): Promise<Response> => new Response("ok");\n',
+      'netlify/edge-functions/edge.ts':
+        'export default async (): Promise<Response> => new Response("ok");\n',
       'api/serverless.ts': 'export default async (): Promise<Response> => new Response("ok");\n',
       'src/lambdas/billing.ts': 'export async function handler(): Promise<void> {}\n',
       'src/functions/notify.ts': 'export async function handler(): Promise<void> {}\n',
-      'worker.ts': "export default { async fetch(): Promise<Response> { return new Response('ok'); } };\n",
+      'worker.ts':
+        "export default { async fetch(): Promise<Response> { return new Response('ok'); } };\n",
     });
     try {
       const parser = new TypeScriptParser();

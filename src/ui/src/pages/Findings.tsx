@@ -40,7 +40,6 @@ interface FindingsProps {
   initialLayer?: 3;
 }
 
-
 export function Findings({
   scanId,
   onOpenFinding,
@@ -273,7 +272,10 @@ export function Findings({
       await batchMarkedToFix({ remove: toRemove });
       const refreshed = await listMarkedToFix();
       setFixQueue(new Set(refreshed.fingerprints));
-      toast(`Removed ${toRemove.length} finding${toRemove.length === 1 ? '' : 's'} from fix queue.`, 'info');
+      toast(
+        `Removed ${toRemove.length} finding${toRemove.length === 1 ? '' : 's'} from fix queue.`,
+        'info',
+      );
     } catch (e) {
       toast(`Bulk remove failed: ${(e as Error).message}`, 'warn');
     } finally {
@@ -368,10 +370,8 @@ export function Findings({
               {grouped ? `${groups.length} clusters` : `${filtered.length} findings`}
             </span>{' '}
             <span className="text-muted">
-              · {filtered.length}{' '}
-              {view === 'false-positive' ? 'flagged' : 'findings'} of{' '}
-              {findings.length}{' '}
-              {view === 'false-positive' ? 'FP' : 'open'}
+              · {filtered.length} {view === 'false-positive' ? 'flagged' : 'findings'} of{' '}
+              {findings.length} {view === 'false-positive' ? 'FP' : 'open'}
             </span>
           </span>
         }
@@ -672,7 +672,11 @@ export function Findings({
                     </td>
                     <td className="py-2.5 text-right font-mono text-xs text-muted">—</td>
                     <td className="py-2.5 pr-5 text-right text-xs text-muted">
-                      {view === 'false-positive' ? (lead.llmFalsePositive ? 'auto FP' : 'manual FP') : 'open'}
+                      {view === 'false-positive'
+                        ? lead.llmFalsePositive
+                          ? 'auto FP'
+                          : 'manual FP'
+                        : 'open'}
                     </td>
                   </tr>
                 );

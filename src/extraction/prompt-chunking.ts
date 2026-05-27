@@ -27,7 +27,10 @@ export function prepareSites<T extends ClusterSite>(sites: ReadonlyArray<T>): T[
  * Approximate prompt size in characters. Conservative — does not attempt
  * tokenizer-accurate counting.
  */
-export function estimatePromptChars(promptTemplate: string, sites: ReadonlyArray<ClusterSite>): number {
+export function estimatePromptChars(
+  promptTemplate: string,
+  sites: ReadonlyArray<ClusterSite>,
+): number {
   const sitesBlock = sites
     .map((s, i) => `[${i + 1}] ${s.file}:${s.line}\n${s.enclosingSource}`)
     .join('\n---\n');

@@ -34,8 +34,8 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 2. **Registry**: add the id to `src/detector-registry.ts` so the
    server lists it in the Settings page.
 3. **Wire**: call the detector from `src/rothunter.ts`. File-walking
-   + symbol-based + import-graph detectors each have a slot —
-   follow the closest sibling.
+   - symbol-based + import-graph detectors each have a slot —
+     follow the closest sibling.
 4. **Test**: add `src/__tests__/<id>.test.ts`. Cover the positive
    case AND at least one false-positive shape — every detector
    ships a per-finding LLM verdict path on top of the deterministic
@@ -60,6 +60,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 ## Reporting bugs
 
 Open an issue using the `bug_report` template. Include:
+
 - rothunter version
 - Node version (`node -v`)
 - Detector id (if a specific detector misbehaves)

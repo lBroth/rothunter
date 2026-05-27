@@ -15,9 +15,10 @@ import * as path from 'node:path';
  */
 export function isPublishedLibrary(root: string): boolean {
   try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.join(root, 'package.json'), 'utf-8'),
-    ) as Record<string, unknown>;
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8')) as Record<
+      string,
+      unknown
+    >;
     if (typeof pkg.name !== 'string' || pkg.name.length === 0) return false;
     if (typeof pkg.version !== 'string' || pkg.version.length === 0) return false;
     if (pkg.private === true) return false;
@@ -32,7 +33,10 @@ export function isPublishedLibrary(root: string): boolean {
   }
 }
 
-export function discoverEntryPoints(workspaceRoot: string, knownFiles: ReadonlySet<string>): Set<string> {
+export function discoverEntryPoints(
+  workspaceRoot: string,
+  knownFiles: ReadonlySet<string>,
+): Set<string> {
   const entries = new Set<string>();
   addPackageJsonEntries(workspaceRoot, entries);
   // Walk nested package.json files (monorepo workspaces — `packages/foo/
@@ -58,9 +62,21 @@ export function discoverEntryPoints(workspaceRoot: string, knownFiles: ReadonlyS
 function findNestedPackageDirs(root: string): string[] {
   const out: string[] = [];
   const SKIP_DIRS = new Set([
-    'node_modules', 'dist', 'build', 'out', 'coverage', '.git',
-    '.next', '.nuxt', '.svelte-kit', '.turbo', '.cache', '.parcel-cache',
-    '.vite', 'tmp', 'temp',
+    'node_modules',
+    'dist',
+    'build',
+    'out',
+    'coverage',
+    '.git',
+    '.next',
+    '.nuxt',
+    '.svelte-kit',
+    '.turbo',
+    '.cache',
+    '.parcel-cache',
+    '.vite',
+    'tmp',
+    'temp',
   ]);
   const stack: string[] = [root];
   while (stack.length > 0) {
@@ -123,7 +139,12 @@ function matchesConvention(file: string): boolean {
   if (/(^|\/)pages\//.test(posix)) return true;
   // app/ files: match both the un-nested case (`app/layout.tsx`, `app/page.tsx`)
   // AND nested route segments (`app/users/[id]/page.tsx`).
-  if (/(^|\/)(src\/)?app\/(.*\/)?(page|route|layout|loading|error|template|not-found|head|default|global-error)\.(ts|tsx)$/.test(posix)) return true;
+  if (
+    /(^|\/)(src\/)?app\/(.*\/)?(page|route|layout|loading|error|template|not-found|head|default|global-error)\.(ts|tsx)$/.test(
+      posix,
+    )
+  )
+    return true;
   if (basename === 'middleware.ts' || basename === 'middleware.tsx') return true;
   if (basename === 'instrumentation.ts' || basename === 'instrumentation-client.ts') return true;
 
@@ -177,7 +198,8 @@ function addPackageJsonEntries(
   const bin = pkg.bin;
   if (typeof bin === 'string') pushIfFile(pkgRoot, bin, entries, workspaceRoot);
   else if (bin && typeof bin === 'object') {
-    for (const v of Object.values(bin as Record<string, unknown>)) pushIfFile(pkgRoot, v, entries, workspaceRoot);
+    for (const v of Object.values(bin as Record<string, unknown>))
+      pushIfFile(pkgRoot, v, entries, workspaceRoot);
   }
 
   const exportsField = pkg.exports;

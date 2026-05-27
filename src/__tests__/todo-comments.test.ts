@@ -18,9 +18,7 @@ describe('todo-comments detector', () => {
   it('flags TODO / FIXME / HACK with appropriate severities', () => {
     const root = workspace({
       'src/a.ts':
-        '// TODO: refactor this\n' +
-        '// FIXME wrong threshold\n' +
-        '// HACK skip auth for demo\n',
+        '// TODO: refactor this\n' + '// FIXME wrong threshold\n' + '// HACK skip auth for demo\n',
     });
     try {
       const findings = detectTodoComments({ workspaceRoot: root, files: ['src/a.ts'] });
