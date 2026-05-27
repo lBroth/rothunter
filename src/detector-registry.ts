@@ -45,6 +45,7 @@ export const DETECTOR_IDS = [
   'similar-functions',
   'todo-comments',
   'env-var-undeclared',
+  'package-export-mismatch',
 ] as const;
 
 export type DetectorId = (typeof DETECTOR_IDS)[number];
@@ -73,6 +74,7 @@ export const MULTI_WORKSPACE_SKIPPED = new Set<DetectorId>([
   'similar-functions',
   'todo-comments',
   'env-var-undeclared',
+  'package-export-mismatch',
 ]);
 
 /**
