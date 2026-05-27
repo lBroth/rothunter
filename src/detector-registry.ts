@@ -27,6 +27,7 @@ export const DETECTOR_IDS = [
   'hot-hub-file',
   're-export-shadow',
   'default-export-name-drift',
+  'schema-shape-divergence',
   // Single-workspace only (file-walking, git, or ts-morph Project-bound)
   'dead-handler',
   'mutation',
