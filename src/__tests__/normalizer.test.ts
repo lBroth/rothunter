@@ -2,7 +2,10 @@ import { describe, expect, it } from '@jest/globals';
 import { TypeNormalizer } from '../normalizers/type-normalizer.js';
 import type { SymbolRecord } from '../types.js';
 
-function objectRecord(name: string, fields: Array<[string, string, { optional?: boolean }?]>): SymbolRecord {
+function objectRecord(
+  name: string,
+  fields: Array<[string, string, { optional?: boolean }?]>,
+): SymbolRecord {
   return {
     id: `test-${name}`,
     kind: 'interface',

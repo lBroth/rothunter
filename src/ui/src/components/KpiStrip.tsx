@@ -34,7 +34,9 @@ export function KpiCell({
   const interactive = onClick != null;
   const cls =
     'px-4 sm:px-5 py-3 sm:py-4 text-left w-full ' +
-    (interactive ? 'transition-colors hover:bg-bg cursor-pointer focus:outline-none focus:bg-bg' : '');
+    (interactive
+      ? 'transition-colors hover:bg-bg cursor-pointer focus:outline-none focus:bg-bg'
+      : '');
   const body = (
     <>
       <div className="text-[9px] sm:text-[10px] uppercase tracking-widest text-muted font-mono mb-1.5 sm:mb-2">

@@ -173,7 +173,8 @@ function matchHttpClient(call: CallExpression): HttpMatch | null {
 }
 
 function extractUrlLiteral(node: Node): string | null {
-  const strLit = node.asKind(SyntaxKind.StringLiteral) ?? node.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
+  const strLit =
+    node.asKind(SyntaxKind.StringLiteral) ?? node.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
   if (strLit) return strLit.getLiteralText();
   if (node.getKind() === SyntaxKind.TemplateExpression) {
     // Reconstruct path with `:param` placeholders for each interpolation.
@@ -194,7 +195,8 @@ function extractFetchMethod(optsNode: Node): string | null {
 }
 
 function extractStringFromNode(node: Node): string | null {
-  const lit = node.asKind(SyntaxKind.StringLiteral) ?? node.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
+  const lit =
+    node.asKind(SyntaxKind.StringLiteral) ?? node.asKind(SyntaxKind.NoSubstitutionTemplateLiteral);
   return lit ? lit.getLiteralText() : null;
 }
 
@@ -240,6 +242,3 @@ function findEnclosingFunction(node: Node): Node | null {
   }
   return null;
 }
-
-
-

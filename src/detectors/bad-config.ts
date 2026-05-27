@@ -26,7 +26,12 @@ export function detectBadConfig(input: BadConfigDetectorInput): Finding[] {
     } catch {
       continue;
     }
-    if (rel.endsWith('.json') || /\/tsconfig.*\.json$/.test(rel) || rel.endsWith('biome.json') || rel.endsWith('biome.jsonc')) {
+    if (
+      rel.endsWith('.json') ||
+      /\/tsconfig.*\.json$/.test(rel) ||
+      rel.endsWith('biome.json') ||
+      rel.endsWith('biome.jsonc')
+    ) {
       const parsed = tryParseJsonc(raw);
       if (!parsed) continue;
       if (isTsConfig(rel)) {
@@ -36,7 +41,8 @@ export function detectBadConfig(input: BadConfigDetectorInput): Finding[] {
         // flagging those leafs as "strict not set" is a false positive.
         const merged = mergeTsConfigExtends(input.workspaceRoot, rel, parsed);
         findings.push(...analyseTsConfig(rel, raw, merged));
-      } else if (rel.endsWith('biome.json') || rel.endsWith('biome.jsonc')) findings.push(...analyseBiome(rel, raw, parsed));
+      } else if (rel.endsWith('biome.json') || rel.endsWith('biome.jsonc'))
+        findings.push(...analyseBiome(rel, raw, parsed));
       else if (isEslintJson(rel)) findings.push(...analyseEslint(rel, raw, parsed));
     } else if (isEslintScript(rel)) {
       findings.push(...analyseEslintScript(rel, raw));
@@ -190,8 +196,10 @@ function isEslintJson(file: string): boolean {
 }
 
 function isEslintScript(file: string): boolean {
-  return /(^|\/)\.?eslintrc?\.(js|cjs|mjs|ts)$/.test(file.replace(/\\/g, '/'))
-    || /(^|\/)eslint\.config\.(js|mjs|cjs|ts)$/.test(file.replace(/\\/g, '/'));
+  return (
+    /(^|\/)\.?eslintrc?\.(js|cjs|mjs|ts)$/.test(file.replace(/\\/g, '/')) ||
+    /(^|\/)eslint\.config\.(js|mjs|cjs|ts)$/.test(file.replace(/\\/g, '/'))
+  );
 }
 
 /**
@@ -228,126 +236,207 @@ function analyseTsConfig(file: string, raw: string, parsed: unknown): Finding[] 
 
   // strict family
   if (compilerOptions.strict === false) {
-    out.push(makeFinding({
-      file, raw, key: 'strict',
-      detectorId: 'bad-config',
-      severity: 'high',
-      title: 'tsconfig: \`strict\` disabled',
-      blurb: '`"strict": false` opts out of the umbrella that enables `noImplicitAny`, `strictNullChecks`, and other safety nets in one go. Code compiled under this setting silently accepts `any` and undefined-prone access.',
-      suggestion: 'Set `"strict": true` and burn down the resulting type errors. Use file-level `// @ts-expect-error` to triage gradually.',
-    }));
-  } else if (compilerOptions.strict === undefined && compilerOptions.noImplicitAny !== true && compilerOptions.strictNullChecks !== true) {
-    out.push(makeFinding({
-      file, raw, key: 'compilerOptions',
-      detectorId: 'bad-config',
-      severity: 'medium',
-      title: 'tsconfig: \`strict\` not set',
-      blurb: 'Without `"strict": true` (and no explicit sub-flags), `noImplicitAny` and `strictNullChecks` default to false. Most type-safety guarantees are off.',
-      suggestion: 'Add `"strict": true` to `compilerOptions`.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'strict',
+        detectorId: 'bad-config',
+        severity: 'high',
+        title: 'tsconfig: \`strict\` disabled',
+        blurb:
+          '`"strict": false` opts out of the umbrella that enables `noImplicitAny`, `strictNullChecks`, and other safety nets in one go. Code compiled under this setting silently accepts `any` and undefined-prone access.',
+        suggestion:
+          'Set `"strict": true` and burn down the resulting type errors. Use file-level `// @ts-expect-error` to triage gradually.',
+      }),
+    );
+  } else if (
+    compilerOptions.strict === undefined &&
+    compilerOptions.noImplicitAny !== true &&
+    compilerOptions.strictNullChecks !== true
+  ) {
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'compilerOptions',
+        detectorId: 'bad-config',
+        severity: 'medium',
+        title: 'tsconfig: \`strict\` not set',
+        blurb:
+          'Without `"strict": true` (and no explicit sub-flags), `noImplicitAny` and `strictNullChecks` default to false. Most type-safety guarantees are off.',
+        suggestion: 'Add `"strict": true` to `compilerOptions`.',
+      }),
+    );
   }
   if (compilerOptions.noImplicitAny === false) {
-    out.push(makeFinding({
-      file, raw, key: 'noImplicitAny',
-      detectorId: 'bad-config',
-      severity: 'high',
-      title: 'tsconfig: \`noImplicitAny\` disabled',
-      blurb: 'Untyped parameters silently become `any`. Refactors lose type-safety guarantees and a whole class of bugs becomes invisible.',
-      suggestion: 'Remove the override or set `"noImplicitAny": true`. Type the remaining offenders explicitly.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'noImplicitAny',
+        detectorId: 'bad-config',
+        severity: 'high',
+        title: 'tsconfig: \`noImplicitAny\` disabled',
+        blurb:
+          'Untyped parameters silently become `any`. Refactors lose type-safety guarantees and a whole class of bugs becomes invisible.',
+        suggestion:
+          'Remove the override or set `"noImplicitAny": true`. Type the remaining offenders explicitly.',
+      }),
+    );
   }
   if (compilerOptions.strictNullChecks === false) {
-    out.push(makeFinding({
-      file, raw, key: 'strictNullChecks',
-      detectorId: 'bad-config',
-      severity: 'high',
-      title: 'tsconfig: \`strictNullChecks\` disabled',
-      blurb: '`null` and `undefined` are silently allowed in every value, defeating the most common class of runtime errors TS is meant to catch.',
-      suggestion: 'Set `"strictNullChecks": true` (or `"strict": true`). Use `?` and explicit unions where null is a legal value.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'strictNullChecks',
+        detectorId: 'bad-config',
+        severity: 'high',
+        title: 'tsconfig: \`strictNullChecks\` disabled',
+        blurb:
+          '`null` and `undefined` are silently allowed in every value, defeating the most common class of runtime errors TS is meant to catch.',
+        suggestion:
+          'Set `"strictNullChecks": true` (or `"strict": true`). Use `?` and explicit unions where null is a legal value.',
+      }),
+    );
   }
   if (compilerOptions.noImplicitReturns === false) {
-    out.push(makeFinding({
-      file, raw, key: 'noImplicitReturns',
-      detectorId: 'bad-config',
-      severity: 'low',
-      title: 'tsconfig: \`noImplicitReturns\` disabled',
-      blurb: 'Functions can fall off the end without returning a value, returning `undefined` implicitly even when the type annotation forbids it.',
-      suggestion: 'Set `"noImplicitReturns": true`.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'noImplicitReturns',
+        detectorId: 'bad-config',
+        severity: 'low',
+        title: 'tsconfig: \`noImplicitReturns\` disabled',
+        blurb:
+          'Functions can fall off the end without returning a value, returning `undefined` implicitly even when the type annotation forbids it.',
+        suggestion: 'Set `"noImplicitReturns": true`.',
+      }),
+    );
   }
   if (compilerOptions.noFallthroughCasesInSwitch === false) {
-    out.push(makeFinding({
-      file, raw, key: 'noFallthroughCasesInSwitch',
-      detectorId: 'bad-config',
-      severity: 'low',
-      title: 'tsconfig: \`noFallthroughCasesInSwitch\` disabled',
-      blurb: 'Missing `break` / `return` in switch cases silently falls through — a famous source of off-by-one bugs.',
-      suggestion: 'Set `"noFallthroughCasesInSwitch": true`.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'noFallthroughCasesInSwitch',
+        detectorId: 'bad-config',
+        severity: 'low',
+        title: 'tsconfig: \`noFallthroughCasesInSwitch\` disabled',
+        blurb:
+          'Missing `break` / `return` in switch cases silently falls through — a famous source of off-by-one bugs.',
+        suggestion: 'Set `"noFallthroughCasesInSwitch": true`.',
+      }),
+    );
   }
   if (compilerOptions.noUnusedLocals === false || compilerOptions.noUnusedParameters === false) {
-    out.push(makeFinding({
-      file, raw, key: compilerOptions.noUnusedLocals === false ? 'noUnusedLocals' : 'noUnusedParameters',
-      detectorId: 'bad-config',
-      severity: 'low',
-      title: 'tsconfig: unused-symbol checks disabled',
-      blurb: 'Unused locals/parameters accumulate as dead code and mask refactor mistakes.',
-      suggestion: 'Enable `"noUnusedLocals": true` and `"noUnusedParameters": true`. Prefix intentionally unused params with `_`.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: compilerOptions.noUnusedLocals === false ? 'noUnusedLocals' : 'noUnusedParameters',
+        detectorId: 'bad-config',
+        severity: 'low',
+        title: 'tsconfig: unused-symbol checks disabled',
+        blurb: 'Unused locals/parameters accumulate as dead code and mask refactor mistakes.',
+        suggestion:
+          'Enable `"noUnusedLocals": true` and `"noUnusedParameters": true`. Prefix intentionally unused params with `_`.',
+      }),
+    );
   }
   if (compilerOptions.noUncheckedIndexedAccess === false) {
-    out.push(makeFinding({
-      file, raw, key: 'noUncheckedIndexedAccess',
-      detectorId: 'bad-config',
-      severity: 'low',
-      title: 'tsconfig: \`noUncheckedIndexedAccess\` disabled',
-      blurb: '`array[i]` is typed `T` instead of `T | undefined`. Out-of-bounds access is invisible to the type-checker.',
-      suggestion: 'Set `"noUncheckedIndexedAccess": true` and handle the `undefined` case at each index.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'noUncheckedIndexedAccess',
+        detectorId: 'bad-config',
+        severity: 'low',
+        title: 'tsconfig: \`noUncheckedIndexedAccess\` disabled',
+        blurb:
+          '`array[i]` is typed `T` instead of `T | undefined`. Out-of-bounds access is invisible to the type-checker.',
+        suggestion:
+          'Set `"noUncheckedIndexedAccess": true` and handle the `undefined` case at each index.',
+      }),
+    );
   }
   if (compilerOptions.allowJs === true && compilerOptions.checkJs !== true) {
-    out.push(makeFinding({
-      file, raw, key: 'allowJs',
-      detectorId: 'bad-config',
-      severity: 'medium',
-      title: 'tsconfig: \`allowJs\` without \`checkJs\`',
-      blurb: 'JS files are bundled with the TS project but not type-checked, so they leak unchecked `any` types into every importer.',
-      suggestion: 'Either remove `"allowJs"` once the migration is done, or add `"checkJs": true` to type-check the JS too.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'allowJs',
+        detectorId: 'bad-config',
+        severity: 'medium',
+        title: 'tsconfig: \`allowJs\` without \`checkJs\`',
+        blurb:
+          'JS files are bundled with the TS project but not type-checked, so they leak unchecked `any` types into every importer.',
+        suggestion:
+          'Either remove `"allowJs"` once the migration is done, or add `"checkJs": true` to type-check the JS too.',
+      }),
+    );
   }
   if (compilerOptions.skipLibCheck === false) {
     // Not actually a bad practice in most cases; skip.
   }
   if (typeof compilerOptions.target === 'string' && /^(ES3|ES5)$/i.test(compilerOptions.target)) {
-    out.push(makeFinding({
-      file, raw, key: 'target',
-      detectorId: 'bad-config',
-      severity: 'low',
-      title: `tsconfig: \`target\` is ${compilerOptions.target}`,
-      blurb: 'Pre-ES2015 target ships heavy polyfills, breaks async/await without runtime, and signals an old toolchain.',
-      suggestion: 'Bump `"target"` to `ES2020` or newer (Node 16+ supports it natively).',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'target',
+        detectorId: 'bad-config',
+        severity: 'low',
+        title: `tsconfig: \`target\` is ${compilerOptions.target}`,
+        blurb:
+          'Pre-ES2015 target ships heavy polyfills, breaks async/await without runtime, and signals an old toolchain.',
+        suggestion: 'Bump `"target"` to `ES2020` or newer (Node 16+ supports it natively).',
+      }),
+    );
   }
-  if (typeof compilerOptions.module === 'string' && compilerOptions.module.toLowerCase() === 'commonjs' && !file.endsWith('tsconfig.base.json')) {
-    out.push(makeFinding({
-      file, raw, key: 'module',
-      detectorId: 'bad-config',
-      severity: 'low',
-      title: 'tsconfig: \`module\` is CommonJS',
-      blurb: 'CommonJS output blocks top-level `await`, ESM-only deps, and complicates bundler interop. ESM is the default in modern toolchains.',
-      suggestion: 'Move to `"module": "ESNext"` (or `"NodeNext"` on Node), and `"moduleResolution": "Bundler"` (or `"NodeNext"`).',
-    }));
+  if (
+    typeof compilerOptions.module === 'string' &&
+    compilerOptions.module.toLowerCase() === 'commonjs' &&
+    !file.endsWith('tsconfig.base.json')
+  ) {
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'module',
+        detectorId: 'bad-config',
+        severity: 'low',
+        title: 'tsconfig: \`module\` is CommonJS',
+        blurb:
+          'CommonJS output blocks top-level `await`, ESM-only deps, and complicates bundler interop. ESM is the default in modern toolchains.',
+        suggestion:
+          'Move to `"module": "ESNext"` (or `"NodeNext"` on Node), and `"moduleResolution": "Bundler"` (or `"NodeNext"`).',
+      }),
+    );
   }
-  if (compilerOptions.suppressImplicitAnyIndexErrors === true || compilerOptions.suppressExcessPropertyErrors === true) {
-    out.push(makeFinding({
-      file, raw, key: compilerOptions.suppressImplicitAnyIndexErrors === true ? 'suppressImplicitAnyIndexErrors' : 'suppressExcessPropertyErrors',
-      detectorId: 'bad-config',
-      severity: 'high',
-      title: 'tsconfig: error-suppression flag enabled',
-      blurb: '`suppressImplicitAnyIndexErrors` / `suppressExcessPropertyErrors` silence whole classes of errors. Both are documented escape hatches the TS team discourages.',
-      suggestion: 'Remove the suppression flag and fix the underlying errors (typed index signatures, exact object shapes).',
-    }));
+  if (
+    compilerOptions.suppressImplicitAnyIndexErrors === true ||
+    compilerOptions.suppressExcessPropertyErrors === true
+  ) {
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key:
+          compilerOptions.suppressImplicitAnyIndexErrors === true
+            ? 'suppressImplicitAnyIndexErrors'
+            : 'suppressExcessPropertyErrors',
+        detectorId: 'bad-config',
+        severity: 'high',
+        title: 'tsconfig: error-suppression flag enabled',
+        blurb:
+          '`suppressImplicitAnyIndexErrors` / `suppressExcessPropertyErrors` silence whole classes of errors. Both are documented escape hatches the TS team discourages.',
+        suggestion:
+          'Remove the suppression flag and fix the underlying errors (typed index signatures, exact object shapes).',
+      }),
+    );
   }
   return out;
 }
@@ -361,29 +450,38 @@ function analyseEslint(file: string, raw: string, parsed: unknown): Finding[] {
 
 function analyseEslintRules(file: string, raw: string, rules: JsonObj): Finding[] {
   const out: Finding[] = [];
-  const BAD: Record<string, { sev: 'high' | 'medium' | 'low'; title: string; blurb: string; suggestion: string }> = {
+  const BAD: Record<
+    string,
+    { sev: 'high' | 'medium' | 'low'; title: string; blurb: string; suggestion: string }
+  > = {
     '@typescript-eslint/no-explicit-any': {
       sev: 'high',
       title: 'eslint: \`no-explicit-any\` disabled',
-      blurb: '`any` defeats type-checking by design. Disabling this rule across the project is the lint-config equivalent of `strict:false`.',
-      suggestion: 'Re-enable the rule, fix offenders with `unknown` or generics, and use eslint-disable comments for the few legitimate cases.',
+      blurb:
+        '`any` defeats type-checking by design. Disabling this rule across the project is the lint-config equivalent of `strict:false`.',
+      suggestion:
+        'Re-enable the rule, fix offenders with `unknown` or generics, and use eslint-disable comments for the few legitimate cases.',
     },
     '@typescript-eslint/no-non-null-assertion': {
       sev: 'medium',
       title: 'eslint: \`no-non-null-assertion\` disabled',
-      blurb: '`foo!` overrides the type-checker. Disabling the rule globally normalises a pattern that silently crashes at runtime when the assumption fails.',
-      suggestion: 'Keep the rule on; opt out with a comment + reason at the rare site that actually needs it.',
+      blurb:
+        '`foo!` overrides the type-checker. Disabling the rule globally normalises a pattern that silently crashes at runtime when the assumption fails.',
+      suggestion:
+        'Keep the rule on; opt out with a comment + reason at the rare site that actually needs it.',
     },
     '@typescript-eslint/no-unused-vars': {
       sev: 'low',
       title: 'eslint: \`no-unused-vars\` disabled',
-      blurb: 'Unused imports / vars accumulate, masking refactor mistakes and inflating bundle size.',
+      blurb:
+        'Unused imports / vars accumulate, masking refactor mistakes and inflating bundle size.',
       suggestion: 'Re-enable; prefix intentional throwaways with `_`.',
     },
-    'eqeqeq': {
+    eqeqeq: {
       sev: 'low',
       title: 'eslint: \`eqeqeq\` disabled',
-      blurb: '`==` coercion bugs are still real. Disabling the rule allows accidental `null == 0` weirdness.',
+      blurb:
+        '`==` coercion bugs are still real. Disabling the rule allows accidental `null == 0` weirdness.',
       suggestion: 'Re-enable with `"always"`.',
     },
   };
@@ -391,14 +489,18 @@ function analyseEslintRules(file: string, raw: string, rules: JsonObj): Finding[
     const val = rules[name];
     if (val == null) continue;
     if (val === 'off' || val === 0 || (Array.isArray(val) && (val[0] === 'off' || val[0] === 0))) {
-      out.push(makeFinding({
-        file, raw, key: name,
-        detectorId: 'bad-config',
-        severity: cfg.sev,
-        title: cfg.title,
-        blurb: cfg.blurb,
-        suggestion: cfg.suggestion,
-      }));
+      out.push(
+        makeFinding({
+          file,
+          raw,
+          key: name,
+          detectorId: 'bad-config',
+          severity: cfg.sev,
+          title: cfg.title,
+          blurb: cfg.blurb,
+          suggestion: cfg.suggestion,
+        }),
+      );
     }
   }
   return out;
@@ -422,7 +524,8 @@ function analyseEslintScript(file: string, raw: string): Finding[] {
       re: /['"]@typescript-eslint\/no-explicit-any['"]\s*:\s*\[?\s*['"]?off['"]?|['"]@typescript-eslint\/no-explicit-any['"]\s*:\s*0\b/,
       sev: 'high',
       title: 'eslint: \`no-explicit-any\` disabled',
-      blurb: '`any` defeats type-checking by design. Disabling this rule across the project is the lint-config equivalent of `strict:false`.',
+      blurb:
+        '`any` defeats type-checking by design. Disabling this rule across the project is the lint-config equivalent of `strict:false`.',
       suggestion: 'Re-enable; fix offenders with `unknown` or generics.',
     },
     {
@@ -453,14 +556,19 @@ function analyseEslintScript(file: string, raw: string): Finding[] {
   for (const p of PATTERNS) {
     const m = p.re.exec(raw);
     if (!m) continue;
-    out.push(makeFinding({
-      file, raw, key: p.name, indexOverride: m.index,
-      detectorId: 'bad-config',
-      severity: p.sev,
-      title: p.title,
-      blurb: p.blurb,
-      suggestion: p.suggestion,
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: p.name,
+        indexOverride: m.index,
+        detectorId: 'bad-config',
+        severity: p.sev,
+        title: p.title,
+        blurb: p.blurb,
+        suggestion: p.suggestion,
+      }),
+    );
   }
   return out;
 }
@@ -474,34 +582,46 @@ function analyseBiome(file: string, raw: string, parsed: unknown): Finding[] {
   const style = asObj(rulesGroup.style) ?? {};
   const out: Finding[] = [];
   if (suspicious.noExplicitAny === 'off') {
-    out.push(makeFinding({
-      file, raw, key: 'noExplicitAny',
-      detectorId: 'bad-config',
-      severity: 'high',
-      title: 'biome: \`noExplicitAny\` disabled',
-      blurb: '`any` defeats type-checking by design.',
-      suggestion: 'Re-enable; fix offenders with `unknown` or generics.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'noExplicitAny',
+        detectorId: 'bad-config',
+        severity: 'high',
+        title: 'biome: \`noExplicitAny\` disabled',
+        blurb: '`any` defeats type-checking by design.',
+        suggestion: 'Re-enable; fix offenders with `unknown` or generics.',
+      }),
+    );
   }
   if (style.noNonNullAssertion === 'off') {
-    out.push(makeFinding({
-      file, raw, key: 'noNonNullAssertion',
-      detectorId: 'bad-config',
-      severity: 'medium',
-      title: 'biome: \`noNonNullAssertion\` disabled',
-      blurb: '`foo!` overrides the type-checker.',
-      suggestion: 'Keep on; opt out at site with a comment.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'noNonNullAssertion',
+        detectorId: 'bad-config',
+        severity: 'medium',
+        title: 'biome: \`noNonNullAssertion\` disabled',
+        blurb: '`foo!` overrides the type-checker.',
+        suggestion: 'Keep on; opt out at site with a comment.',
+      }),
+    );
   }
   if (linter.enabled === false) {
-    out.push(makeFinding({
-      file, raw, key: 'linter.enabled',
-      detectorId: 'bad-config',
-      severity: 'medium',
-      title: 'biome: linter disabled',
-      blurb: 'The whole linter is off — lint findings will never reach the developer.',
-      suggestion: 'Set `"enabled": true` and tune individual rules instead.',
-    }));
+    out.push(
+      makeFinding({
+        file,
+        raw,
+        key: 'linter.enabled',
+        detectorId: 'bad-config',
+        severity: 'medium',
+        title: 'biome: linter disabled',
+        blurb: 'The whole linter is off — lint findings will never reach the developer.',
+        suggestion: 'Set `"enabled": true` and tune individual rules instead.',
+      }),
+    );
   }
   return out;
 }
@@ -539,7 +659,11 @@ function makeFinding(args: MakeFindingArgs): Finding {
   };
 }
 
-function locateInSource(raw: string, key: string, indexOverride?: number): { line: number; snippetLines: string[] } {
+function locateInSource(
+  raw: string,
+  key: string,
+  indexOverride?: number,
+): { line: number; snippetLines: string[] } {
   const idx = indexOverride ?? findKeyIndex(raw, key);
   const lines = raw.split('\n');
   if (idx < 0) {
@@ -559,5 +683,3 @@ function findKeyIndex(raw: string, key: string): number {
   const m = re.exec(raw);
   return m ? m.index : -1;
 }
-
-

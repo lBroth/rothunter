@@ -38,8 +38,7 @@ export function detectHotHubFiles(input: HotHubFileDetectorInput): Finding[] {
     confidence: 1,
     layer: 1,
     title: `Import hub: ${file} (${count} importers)`,
-    description:
-      `\`${file}\` is imported by ${count} other files. Hubs concentrate change-blast-radius — every refactor of this file ripples across the whole workspace.`,
+    description: `\`${file}\` is imported by ${count} other files. Hubs concentrate change-blast-radius — every refactor of this file ripples across the whole workspace.`,
     evidence: [
       {
         file,
@@ -52,4 +51,3 @@ export function detectHotHubFiles(input: HotHubFileDetectorInput): Finding[] {
     fingerprint: `hot-hub-file:${stableHash(file)}`,
   }));
 }
-

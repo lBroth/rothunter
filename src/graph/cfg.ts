@@ -178,7 +178,10 @@ export function buildCfg(body: Node): Cfg {
         cur.succ.push(cb.id);
         if (prev) prev.succ.push(cb.id); // implicit fall-through
         const stmts = (c as { getStatements?: () => Node[] }).getStatements?.() ?? [];
-        const endCase = visitStmts(stmts, cb, { breakTarget: after, continueTarget: ctx.continueTarget });
+        const endCase = visitStmts(stmts, cb, {
+          breakTarget: after,
+          continueTarget: ctx.continueTarget,
+        });
         endCase.succ.push(after.id);
         prev = endCase;
       }

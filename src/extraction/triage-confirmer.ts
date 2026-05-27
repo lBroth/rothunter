@@ -123,10 +123,10 @@ export class TriageConfirmer {
       .replace('{{EXTRA_CONTEXT}}', extraBlock);
 
     try {
-      const raw = await this.llm.chat(
-        [{ role: 'user', content: prompt }],
-        { temperature: 0, maxTokens: 128 },
-      );
+      const raw = await this.llm.chat([{ role: 'user', content: prompt }], {
+        temperature: 0,
+        maxTokens: 128,
+      });
       const parsed = parseLlmJsonResponse(raw);
       const verdict = VerdictSchema.parse(parsed);
       this.cache.set(cacheKey, verdict);

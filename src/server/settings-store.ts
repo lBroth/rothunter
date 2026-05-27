@@ -33,9 +33,53 @@ export interface AppSettings {
 
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
 
+// Detectors that ship OFF by default — operators opt in from the
+// Settings UI. Two distinct reasons land an id here:
+//
+//   1. Covered by a standard ESLint rule (or tsconfig strict). Running
+//      both produces duplicate noise when the project's own lint is
+//      configured. silent-catch / todo-comments / mutable-globals stay
+//      ON because no ESLint rule covers them with the same scope
+//      (silent-catch flags console-only + bare-return catches that
+//      no-empty does not; todo-comments scans non-TS files; no ESLint
+//      rule flags top-level reassigned `let` — prefer-const flags the
+//      opposite case).
+//
+//   2. New cross-file / heuristic detectors that are unique to
+//      rothunter but ship conservatively until operators have had a
+//      chance to validate them on their codebase. Each comes with an
+//      LLM-confirmation pass that catches the common FP shapes, but
+//      starting OFF keeps the first-run noise floor low.
+//
+// Adding an id here that doesn't yet exist in DETECTOR_IDS is a no-op
+// — the merge in `readSettings()` falls back to the present-id list.
+// Detector PRs add their id to DETECTOR_IDS; the OFF set entry below
+// becomes effective once the PR lands.
+const LINT_OVERLAP_DEFAULT_OFF = new Set<string>([
+  // 1. ESLint / tsc overlap
+  'public-any', // @typescript-eslint/no-explicit-any
+  'long-function', // max-lines-per-function
+  'long-file', // max-lines
+  'deep-nesting', // max-depth / complexity
+  'magic-numbers', // no-magic-numbers
+  'console-log-prod', // no-console
+  'skip-tests', // jest/no-disabled-tests + jest/no-focused-tests
+
+  // 2. New cross-file / heuristic detectors — conservative ship,
+  //    flip ON per project from the Settings UI.
+  're-export-shadow',
+  'default-export-name-drift',
+  'test-without-assertion',
+  'env-var-undeclared',
+  'package-export-mismatch',
+  'schema-shape-divergence',
+  'producer-consumer-field-drift',
+  'unsanitized-input-to-sink',
+]);
+
 function defaultSettings(): AppSettings {
   const detectors: Record<string, boolean> = {};
-  for (const id of DETECTOR_IDS) detectors[id] = true;
+  for (const id of DETECTOR_IDS) detectors[id] = !LINT_OVERLAP_DEFAULT_OFF.has(id);
   // Auto-tune LLM concurrency: default to half the CPU cores, clamped
   // to [1, 8]. Most laptops land at 4 — a sane balance between local
   // llama.cpp throughput and OS responsiveness during a scan.

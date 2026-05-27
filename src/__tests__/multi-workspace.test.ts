@@ -103,7 +103,6 @@ describe('multi-workspace runner', () => {
     const result = await rothunter.run({
       workspaceRoot: parent,
       detectorsAllow: new Set(['console-log-prod', 'duplicate-type']),
-      
     });
 
     const probeFindings = result.findings.filter((f) => f.detectorId === 'console-log-prod');
@@ -125,15 +124,16 @@ describe('multi-workspace runner', () => {
     const result = await rothunter.run({
       workspaceRoot: parent,
       detectorsAllow: new Set(['duplicate-type']),
-      
+
       llmRejectionThreshold: 0,
     });
 
     const dupTypes = result.findings.filter((f) => f.detectorId === 'duplicate-type');
     expect(dupTypes.length).toBeGreaterThanOrEqual(1);
-    const sharedDtoCluster = dupTypes.find((f) =>
-      f.evidence.some((e) => e.file.startsWith('service-a/')) &&
-      f.evidence.some((e) => e.file.startsWith('service-b/')),
+    const sharedDtoCluster = dupTypes.find(
+      (f) =>
+        f.evidence.some((e) => e.file.startsWith('service-a/')) &&
+        f.evidence.some((e) => e.file.startsWith('service-b/')),
     );
     expect(sharedDtoCluster).toBeDefined();
   }, 30_000);
@@ -143,7 +143,6 @@ describe('multi-workspace runner', () => {
     const result = await rothunter.run({
       workspaceRoot: parent,
       detectorsAllow: new Set(['console-log-prod']),
-      
     });
 
     const perWs = new Map<string, number>();

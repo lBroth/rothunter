@@ -24,15 +24,15 @@ export function detectLongFunctions(input: LongFunctionDetectorInput): Finding[]
     if (isTestHarnessName(sym.name)) continue;
     const lines = sym.range.endLine - sym.range.startLine + 1;
     if (lines < low) continue;
-    const severity: 'high' | 'medium' | 'low' = lines >= high ? 'high' : lines >= med ? 'medium' : 'low';
+    const severity: 'high' | 'medium' | 'low' =
+      lines >= high ? 'high' : lines >= med ? 'medium' : 'low';
     findings.push({
       detectorId: 'long-function',
       severity,
       confidence: 0.98,
       layer: 1,
       title: `Long function: \`${sym.name}\` (${lines} lines) in ${sym.file}`,
-      description:
-        `\`${sym.name}\` spans ${lines} lines (${sym.range.startLine}–${sym.range.endLine}). Functions this long are hard to test, hard to reason about, and accumulate branching that begs to be flattened (polymorphism, lookup tables, early returns).`,
+      description: `\`${sym.name}\` spans ${lines} lines (${sym.range.startLine}–${sym.range.endLine}). Functions this long are hard to test, hard to reason about, and accumulate branching that begs to be flattened (polymorphism, lookup tables, early returns).`,
       evidence: [
         {
           file: sym.file,
@@ -57,4 +57,3 @@ function isTestHarnessName(name: string): boolean {
 function firstLines(source: string, n: number): string {
   return source.split('\n').slice(0, n).join('\n');
 }
-

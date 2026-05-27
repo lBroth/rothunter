@@ -62,8 +62,10 @@ function analyseFile(file: string, raw: string): Finding[] {
 
 function isTestFile(file: string): boolean {
   const posix = file.replace(/\\/g, '/');
-  return /(?:^|\/)(__tests__|tests|test|spec)\//.test(posix)
-    || /\.(?:test|spec)\.(?:ts|tsx|js|jsx|mts|cts|mjs|cjs)$/.test(posix);
+  return (
+    /(?:^|\/)(__tests__|tests|test|spec)\//.test(posix) ||
+    /\.(?:test|spec)\.(?:ts|tsx|js|jsx|mts|cts|mjs|cjs)$/.test(posix)
+  );
 }
 
 function lineOf(raw: string, idx: number): number {
@@ -76,4 +78,3 @@ function snippetAround(raw: string, line: number): string {
   const to = Math.min(lines.length, line + 2);
   return lines.slice(from, to).join('\n');
 }
-

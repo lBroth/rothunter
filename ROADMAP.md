@@ -15,6 +15,7 @@ operators can toggle individually or accept the bundle.
 #### 1a. `any-leak` — `any` / `Promise<any>` / `unknown` cast escapes
 
 **Signal**
+
 - Function return type annotated `Promise<any>` / `any` / `Array<any>` /
   `Record<string, any>`.
 - Variable declarations annotated `: any` outside `// @ts-expect-error`
@@ -29,6 +30,7 @@ spreads to every caller. `Promise<any>` is especially toxic — `.then`
 chains silently accept any shape.
 
 **Acceptance**
+
 - Skip test files (`.test.ts` / `.spec.ts` / `__tests__/`).
 - Skip generated files (`.generated.ts`, `*.d.ts`).
 - Severity: `medium` per occurrence, cap 10 per file.
@@ -38,6 +40,7 @@ chains silently accept any shape.
 #### 1b. `god-type` — wide type read narrowly by many callers
 
 **Signal**
+
 - An `interface` or `type` declaration with ≥ 8 fields where ≥ 50 % are
   marked `?` (optional).
 - Used as a parameter type by ≥ 5 functions across ≥ 2 files.
@@ -50,6 +53,7 @@ one breaks everyone silently. The right shape is usually 2–3 small,
 focused types named after each actual use case.
 
 **Acceptance**
+
 - Compute per-function field-access set via ts-morph property-access on
   the parameter binding.
 - Cluster consumers by accessed-field signature; if ≥ 3 distinct
@@ -65,6 +69,7 @@ focused types named after each actual use case.
 #### 1c. `everything-optional` — type whose every field is `?`
 
 **Signal**
+
 - `interface` / `type` declaration where every field is optional and the
   type has ≥ 4 fields.
 - Used in a position that does not exit the module (private helper) OR
@@ -78,6 +83,7 @@ discriminated unions, builder methods, or explicit "required" + "options"
 split.
 
 **Acceptance**
+
 - Trivial declarations (`{ value?: T }`) excluded — require ≥ 4 fields.
 - React component props excluded when the type ends in `Props` AND the
   function body is a JSX-returning component (idiomatic React shape).
@@ -87,6 +93,7 @@ split.
 #### 1d. `wide-string-type` — `string` parameter that should be a union
 
 **Signal**
+
 - Function parameter typed `string` where ≥ 3 call sites pass the same
   literal subset (e.g. `'create' | 'update' | 'delete'`).
 - The function body branches on the parameter via `switch` / `if` chain
@@ -98,6 +105,7 @@ literals or refactors that miss one branch. A literal union or `const`
 object turns the same code into a closed enumeration.
 
 **Acceptance**
+
 - Detect literal switch/if chains that compare the parameter against
   ≥ 3 string literals.
 - Suggest the literal union derived from the observed values.
@@ -107,6 +115,7 @@ object turns the same code into a closed enumeration.
 #### 1e. `boolean-trap` — multiple boolean params on the same function
 
 **Signal**
+
 - Function signature with ≥ 2 boolean parameters (`async`,
   `dryRun`, …) AND at least one call site passing positional booleans
   (`f(true, false)`).
@@ -116,6 +125,7 @@ object turns the same code into a closed enumeration.
 options object or splitting into two functions.
 
 **Acceptance**
+
 - Skip when boolean params have default values AND every call site uses
   named property syntax (`{ async: true }`).
 - Severity: `low`.

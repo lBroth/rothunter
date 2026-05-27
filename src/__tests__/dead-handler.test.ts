@@ -29,10 +29,16 @@ describe('dead-handler detector', () => {
       const parser = new TypeScriptParser();
       const parsed = await parser.parseWorkspaceFull({ workspaceRoot: root });
       const iac = resolveIacEntryFiles(root, parsed.files);
-      const findings = detectDeadHandlers({ files: parsed.files, iacEntries: iac, imports: parsed.imports });
+      const findings = detectDeadHandlers({
+        files: parsed.files,
+        iacEntries: iac,
+        imports: parsed.imports,
+      });
       const titles = findings.map((f) => f.title);
       expect(titles).toEqual(
-        expect.arrayContaining([expect.stringContaining('Handler with no IaC wiring: src/handlers/orphan.ts')]),
+        expect.arrayContaining([
+          expect.stringContaining('Handler with no IaC wiring: src/handlers/orphan.ts'),
+        ]),
       );
       expect(titles).not.toEqual(
         expect.arrayContaining([expect.stringContaining('src/handlers/live.ts')]),
@@ -44,7 +50,8 @@ describe('dead-handler detector', () => {
 
   it('does NOT flag Next.js / Vercel /api routes (file-system-wired, no IaC needed)', async () => {
     const root = await setup({
-      'app/api/users/route.ts': 'export async function GET(): Promise<Response> { return new Response("ok"); }\n',
+      'app/api/users/route.ts':
+        'export async function GET(): Promise<Response> { return new Response("ok"); }\n',
       'pages/api/legacy.ts': 'export default function handler(): void {}\n',
       'api/serverless.ts': 'export default async (): Promise<Response> => new Response("ok");\n',
     });
@@ -64,8 +71,10 @@ describe('dead-handler detector', () => {
 
   it('skips a handler that is statically imported by something else', async () => {
     const root = await setup({
-      'src/test-rig.ts': "import { handler } from './handlers/imported';\nexport function callIt(): unknown { return handler({}); }\n",
-      'src/handlers/imported.ts': 'export function handler(_e: unknown): unknown { return null; }\n',
+      'src/test-rig.ts':
+        "import { handler } from './handlers/imported';\nexport function callIt(): unknown { return handler({}); }\n",
+      'src/handlers/imported.ts':
+        'export function handler(_e: unknown): unknown { return null; }\n',
     });
     try {
       const parser = new TypeScriptParser();

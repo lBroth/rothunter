@@ -45,7 +45,8 @@ export function detectTodoComments(input: TodoCommentsDetectorInput): Finding[] 
   // Use the caller-supplied file list when present; otherwise walk the
   // workspace to pick up non-TS sources (Python / Go / shell) the
   // TypeScript parser doesn't visit.
-  const files = input.files && input.files.length > 0 ? input.files : walkFiles(input.workspaceRoot);
+  const files =
+    input.files && input.files.length > 0 ? input.files : walkFiles(input.workspaceRoot);
 
   for (const rel of files) {
     if (findings.length >= maxFindings) break;
@@ -73,8 +74,7 @@ export function detectTodoComments(input: TodoCommentsDetectorInput): Finding[] 
         confidence: 1,
         layer: 1,
         title: `${marker} comment in ${rel}:${line}${note ? ` — ${note}` : ''}`,
-        description:
-          `Inline \`${marker}\` comment at \`${rel}:${line}\`. Tracking technical debt in source comments works for a sprint or two and then rots — these accumulate and nobody knows which ones are still relevant.`,
+        description: `Inline \`${marker}\` comment at \`${rel}:${line}\`. Tracking technical debt in source comments works for a sprint or two and then rots — these accumulate and nobody knows which ones are still relevant.`,
         evidence: [
           {
             file: rel,
@@ -167,11 +167,15 @@ function walkFiles(root: string): string[] {
 
 function isAnalysable(file: string): boolean {
   const posix = file.replace(/\\/g, '/');
-  return /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java|kt|swift|rb|php|sql|sh|yaml|yml|toml)$/.test(posix)
-    && !/\.d\.ts$/.test(posix)
-    && !/(^|\/)node_modules\//.test(posix)
-    && !/(^|\/)dist\//.test(posix)
-    && !/(^|\/)build\//.test(posix);
+  return (
+    /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java|kt|swift|rb|php|sql|sh|yaml|yml|toml)$/.test(
+      posix,
+    ) &&
+    !/\.d\.ts$/.test(posix) &&
+    !/(^|\/)node_modules\//.test(posix) &&
+    !/(^|\/)dist\//.test(posix) &&
+    !/(^|\/)build\//.test(posix)
+  );
 }
 
 function snippetAround(lines: ReadonlyArray<string>, line: number): string {
@@ -179,5 +183,3 @@ function snippetAround(lines: ReadonlyArray<string>, line: number): string {
   const to = Math.min(lines.length, line + 1);
   return lines.slice(from, to).join('\n');
 }
-
-

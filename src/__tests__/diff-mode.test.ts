@@ -15,11 +15,7 @@ describe('TypeScriptParser --diff mode', () => {
 
   beforeEach(() => {
     workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'rothunter-diff-'));
-    fs.writeFileSync(
-      path.join(workspace, 'a.ts'),
-      'export interface A { id: string; }\n',
-      'utf-8',
-    );
+    fs.writeFileSync(path.join(workspace, 'a.ts'), 'export interface A { id: string; }\n', 'utf-8');
     fs.writeFileSync(
       path.join(workspace, 'b.ts'),
       'export interface B { name: string; }\n',

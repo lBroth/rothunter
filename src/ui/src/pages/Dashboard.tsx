@@ -32,11 +32,7 @@ export interface FindingsFilter {
 
 type WhatsNewTab = 'added' | 'resolved' | 'persisting';
 
-export function Dashboard({
-  scanId,
-  onOpenFinding,
-  onOpenFindings,
-}: DashboardProps): JSX.Element {
+export function Dashboard({ scanId, onOpenFinding, onOpenFindings }: DashboardProps): JSX.Element {
   const [scan, setScan] = useState<ScanRecord | null>(null);
   const [diff, setDiff] = useState<ScanDiff | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -116,11 +112,8 @@ export function Dashboard({
   // doesn't have to context-switch into a "real" dashboard after the
   // first scan completes. The "Run scan" affordance lives in the top
   // bar regardless of whether a scan exists.
-  const workspaceLabel = scan
-    ? scan.workspaceRoot.split('/').slice(-2).join(' / ')
-    : 'no scan yet';
-  const durationS =
-    scan?.finishedAt ? Math.round((scan.finishedAt - scan.startedAt) / 1000) : null;
+  const workspaceLabel = scan ? scan.workspaceRoot.split('/').slice(-2).join(' / ') : 'no scan yet';
+  const durationS = scan?.finishedAt ? Math.round((scan.finishedAt - scan.startedAt) / 1000) : null;
 
   return (
     <div className="space-y-8 max-w-screen-2xl">
@@ -128,8 +121,8 @@ export function Dashboard({
         <section className="rounded-lg border border-accent/40 bg-accent/5 px-5 py-3 flex items-center gap-3 flex-wrap">
           <Sparkles size={14} className="text-accent" />
           <span className="text-sm text-ink">
-            <span className="font-semibold">{fixQueueCount}</span>{' '}
-            finding{fixQueueCount === 1 ? '' : 's'} marked to fix
+            <span className="font-semibold">{fixQueueCount}</span> finding
+            {fixQueueCount === 1 ? '' : 's'} marked to fix
           </span>
           <span className="text-xs text-muted font-mono">
             queue lives at <code>.rothunter/marked-to-fix.json</code>
@@ -152,14 +145,16 @@ export function Dashboard({
       <SectionHeader
         eyebrow={`SCAN SUMMARY · ${workspaceLabel}`}
         title={
-          scan
-            ? renderSerifSentence(counts.high, diff?.added.length ?? 0)
-            : (
-              <span>
-                <span className="text-ink">No scan yet.</span>{' '}
-                <span className="text-muted">Run one from the top bar to populate the dashboard.</span>
+          scan ? (
+            renderSerifSentence(counts.high, diff?.added.length ?? 0)
+          ) : (
+            <span>
+              <span className="text-ink">No scan yet.</span>{' '}
+              <span className="text-muted">
+                Run one from the top bar to populate the dashboard.
               </span>
-            )
+            </span>
+          )
         }
         meta={
           <div className="space-y-1">
@@ -290,7 +285,8 @@ function CombinedFixPromptModal({
           <div className="min-w-0">
             <div className="font-serif text-base font-semibold text-ink">Combined fix prompt</div>
             <div className="text-[11px] text-muted font-mono">
-              {count} finding{count === 1 ? '' : 's'} · paste into Claude Code · Codex · Cursor · Copilot Chat
+              {count} finding{count === 1 ? '' : 's'} · paste into Claude Code · Codex · Cursor ·
+              Copilot Chat
             </div>
           </div>
           <button

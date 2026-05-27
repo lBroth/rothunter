@@ -53,7 +53,10 @@ export class TypeNormalizer {
     const sortedByType = [...fields].sort((a, b) =>
       canonicalType(a.type).localeCompare(canonicalType(b.type)),
     );
-    const structuralSig = serializeFields(sortedByType, { withNames: false, normalizeNames: false });
+    const structuralSig = serializeFields(sortedByType, {
+      withNames: false,
+      normalizeNames: false,
+    });
 
     return {
       ...record,
@@ -78,9 +81,18 @@ export class TypeNormalizer {
    * `bodyNormalized` was already whitespace-collapsed by the parser.
    */
   private normalizeFunction(record: SymbolRecord, fn: FunctionStructure): SymbolRecord {
-    const paramsStrict = serializeFunctionParams(fn.params, { withNames: true, normalizeNames: false });
-    const paramsNormalized = serializeFunctionParams(fn.params, { withNames: true, normalizeNames: true });
-    const paramsStructural = serializeFunctionParams(fn.params, { withNames: false, normalizeNames: false });
+    const paramsStrict = serializeFunctionParams(fn.params, {
+      withNames: true,
+      normalizeNames: false,
+    });
+    const paramsNormalized = serializeFunctionParams(fn.params, {
+      withNames: true,
+      normalizeNames: true,
+    });
+    const paramsStructural = serializeFunctionParams(fn.params, {
+      withNames: false,
+      normalizeNames: false,
+    });
     const ret = canonicalType(fn.returnType);
     const flags = `${fn.async ? 'a' : ''}${fn.generator ? 'g' : ''}`;
 
@@ -120,14 +132,76 @@ function serializeFunctionParams(params: FieldStructure[], opts: SerializeOption
  */
 function anonymizeIdentifiers(body: string): string {
   const TS_KEYWORDS = new Set([
-    'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default', 'break', 'continue',
-    'return', 'throw', 'try', 'catch', 'finally', 'new', 'this', 'super', 'class', 'extends',
-    'implements', 'function', 'const', 'let', 'var', 'typeof', 'instanceof', 'in', 'of',
-    'await', 'async', 'yield', 'true', 'false', 'null', 'undefined', 'void', 'delete',
-    'as', 'is', 'satisfies', 'keyof', 'readonly', 'public', 'private', 'protected', 'static',
-    'export', 'import', 'from', 'string', 'number', 'boolean', 'object', 'never', 'any',
-    'unknown', 'bigint', 'symbol', 'Date', 'Array', 'Map', 'Set', 'Promise', 'Record',
-    'Partial', 'Pick', 'Omit', 'Readonly', 'ReadonlyArray',
+    'if',
+    'else',
+    'for',
+    'while',
+    'do',
+    'switch',
+    'case',
+    'default',
+    'break',
+    'continue',
+    'return',
+    'throw',
+    'try',
+    'catch',
+    'finally',
+    'new',
+    'this',
+    'super',
+    'class',
+    'extends',
+    'implements',
+    'function',
+    'const',
+    'let',
+    'var',
+    'typeof',
+    'instanceof',
+    'in',
+    'of',
+    'await',
+    'async',
+    'yield',
+    'true',
+    'false',
+    'null',
+    'undefined',
+    'void',
+    'delete',
+    'as',
+    'is',
+    'satisfies',
+    'keyof',
+    'readonly',
+    'public',
+    'private',
+    'protected',
+    'static',
+    'export',
+    'import',
+    'from',
+    'string',
+    'number',
+    'boolean',
+    'object',
+    'never',
+    'any',
+    'unknown',
+    'bigint',
+    'symbol',
+    'Date',
+    'Array',
+    'Map',
+    'Set',
+    'Promise',
+    'Record',
+    'Partial',
+    'Pick',
+    'Omit',
+    'Readonly',
+    'ReadonlyArray',
   ]);
   return body.replace(/[A-Za-z_$][\w$]*/g, (token) => (TS_KEYWORDS.has(token) ? token : '_'));
 }
@@ -140,11 +214,7 @@ interface SerializeOptions {
 function serializeFields(fields: FieldStructure[], opts: SerializeOptions): string {
   if (fields.length === 0) return '{}';
   const parts = fields.map((f) => {
-    const name = opts.withNames
-      ? opts.normalizeNames
-        ? normalizeFieldName(f.name)
-        : f.name
-      : '_';
+    const name = opts.withNames ? (opts.normalizeNames ? normalizeFieldName(f.name) : f.name) : '_';
     const type = canonicalType(f.type);
     const opt = f.optional ? '?' : '';
     return `${name}${opt}:${type}`;

@@ -17,7 +17,7 @@ function workspace(files: Record<string, string>): string {
 describe('mutable-globals detector', () => {
   it('flags top-level let reassigned later', () => {
     const root = workspace({
-      'src/a.ts': "let counter = 0;\nfunction inc() { counter = counter + 1; }\n",
+      'src/a.ts': 'let counter = 0;\nfunction inc() { counter = counter + 1; }\n',
     });
     try {
       const findings = detectMutableGlobals({ workspaceRoot: root, files: ['src/a.ts'] });
@@ -30,7 +30,7 @@ describe('mutable-globals detector', () => {
 
   it('does NOT flag top-level let assigned only once', () => {
     const root = workspace({
-      'src/a.ts': "let constInDisguise = 42;\nfunction f() { return constInDisguise; }\n",
+      'src/a.ts': 'let constInDisguise = 42;\nfunction f() { return constInDisguise; }\n',
     });
     try {
       const findings = detectMutableGlobals({ workspaceRoot: root, files: ['src/a.ts'] });
@@ -42,7 +42,8 @@ describe('mutable-globals detector', () => {
 
   it('flags export let with later reassignment', () => {
     const root = workspace({
-      'src/a.ts': "export let cfg = { mode: 'a' };\nexport function setMode(m: string) { cfg.mode = m; cfg = { mode: m }; }\n",
+      'src/a.ts':
+        "export let cfg = { mode: 'a' };\nexport function setMode(m: string) { cfg.mode = m; cfg = { mode: m }; }\n",
     });
     try {
       const findings = detectMutableGlobals({ workspaceRoot: root, files: ['src/a.ts'] });
@@ -54,7 +55,7 @@ describe('mutable-globals detector', () => {
 
   it('does NOT flag let inside a function', () => {
     const root = workspace({
-      'src/a.ts': "function f() { let x = 0; x = x + 1; return x; }\n",
+      'src/a.ts': 'function f() { let x = 0; x = x + 1; return x; }\n',
     });
     try {
       const findings = detectMutableGlobals({ workspaceRoot: root, files: ['src/a.ts'] });
@@ -66,7 +67,7 @@ describe('mutable-globals detector', () => {
 
   it('flags compound assignment ops (+= etc.)', () => {
     const root = workspace({
-      'src/a.ts': "let total = 0;\nfunction add(n: number) { total += n; }\n",
+      'src/a.ts': 'let total = 0;\nfunction add(n: number) { total += n; }\n',
     });
     try {
       const findings = detectMutableGlobals({ workspaceRoot: root, files: ['src/a.ts'] });

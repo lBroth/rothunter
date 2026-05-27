@@ -56,7 +56,7 @@ describe('silent-catch detector', () => {
 
   it('does NOT flag console.error (intentional reporting)', () => {
     const root = workspace({
-      'a.ts': "try { x(); } catch (e) { console.error(e); }\n",
+      'a.ts': 'try { x(); } catch (e) { console.error(e); }\n',
     });
     try {
       const findings = detectSilentCatches({ workspaceRoot: root, files: ['a.ts'] });
@@ -70,7 +70,7 @@ describe('silent-catch detector', () => {
     const root = workspace({
       'a.ts':
         "try { x(); } catch (e) { throw new Error('wrap'); }\n" +
-        "try { y(); } catch (e) { logger.error({ err: e }); reporter.send(e); }\n",
+        'try { y(); } catch (e) { logger.error({ err: e }); reporter.send(e); }\n',
     });
     try {
       const findings = detectSilentCatches({ workspaceRoot: root, files: ['a.ts'] });
@@ -82,8 +82,8 @@ describe('silent-catch detector', () => {
 
   it('skips .d.ts and unsupported extensions', () => {
     const root = workspace({
-      'global.d.ts': "declare const x: any;\n",
-      'README.md': "try { } catch {}\n",
+      'global.d.ts': 'declare const x: any;\n',
+      'README.md': 'try { } catch {}\n',
     });
     try {
       const findings = detectSilentCatches({
@@ -98,11 +98,11 @@ describe('silent-catch detector', () => {
 
   it('produces stable fingerprints across runs', () => {
     const root = workspace({
-      'a.ts': "try { x(); } catch {}\n",
+      'a.ts': 'try { x(); } catch {}\n',
     });
     try {
-      const a = detectSilentCatches({ workspaceRoot: root, files: ['a.ts' ] });
-      const b = detectSilentCatches({ workspaceRoot: root, files: ['a.ts' ] });
+      const a = detectSilentCatches({ workspaceRoot: root, files: ['a.ts'] });
+      const b = detectSilentCatches({ workspaceRoot: root, files: ['a.ts'] });
       expect(a[0]!.fingerprint).toBe(b[0]!.fingerprint);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });

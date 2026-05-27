@@ -50,8 +50,7 @@ export function pathToRoute(path: string): Route {
   const detector = params.get('detector') ?? undefined;
   const directory = params.get('directory') ?? undefined;
   const sev = params.get('severity');
-  const severity =
-    sev === 'high' || sev === 'medium' || sev === 'low' ? sev : undefined;
+  const severity = sev === 'high' || sev === 'medium' || sev === 'low' ? sev : undefined;
   const v = params.get('view');
   const view = v === 'open' || v === 'false-positive' ? v : undefined;
   const layerRaw = params.get('layer');

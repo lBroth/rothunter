@@ -104,7 +104,9 @@ function parseConfig(configPath: string): RotHunterConfig {
   const workspaces: WorkspaceConfig[] = data.workspaces.map((entry, i) => {
     const rootAbs = path.isAbsolute(entry.path) ? entry.path : path.resolve(configDir, entry.path);
     if (!fs.existsSync(rootAbs)) {
-      throw new Error(`${configPath}: workspaces[${i}].path "${entry.path}" does not exist on disk.`);
+      throw new Error(
+        `${configPath}: workspaces[${i}].path "${entry.path}" does not exist on disk.`,
+      );
     }
     return {
       rootAbs,

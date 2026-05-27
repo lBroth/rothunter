@@ -57,14 +57,16 @@ function lineAt(raw: string, line: number): string {
 
 function isAnalysable(file: string): boolean {
   const posix = file.replace(/\\/g, '/');
-  return /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(posix)
-    && !/\.d\.ts$/.test(posix)
-    && !/(^|\/)node_modules\//.test(posix)
-    && !/(?:^|\/)__tests__\//.test(posix)
-    && !/(?:^|\/)tests?\//.test(posix)
-    && !/(?:^|\/)scripts?\//.test(posix)
-    && !/\.test\.(?:ts|tsx|js|jsx)$/.test(posix)
-    && !/\.spec\.(?:ts|tsx|js|jsx)$/.test(posix);
+  return (
+    /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(posix) &&
+    !/\.d\.ts$/.test(posix) &&
+    !/(^|\/)node_modules\//.test(posix) &&
+    !/(?:^|\/)__tests__\//.test(posix) &&
+    !/(?:^|\/)tests?\//.test(posix) &&
+    !/(?:^|\/)scripts?\//.test(posix) &&
+    !/\.test\.(?:ts|tsx|js|jsx)$/.test(posix) &&
+    !/\.spec\.(?:ts|tsx|js|jsx)$/.test(posix)
+  );
 }
 
 function lineOf(raw: string, idx: number): number {
@@ -77,4 +79,3 @@ function snippetAround(raw: string, line: number): string {
   const to = Math.min(lines.length, line + 1);
   return lines.slice(from, to).join('\n');
 }
-

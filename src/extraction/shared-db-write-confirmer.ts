@@ -148,10 +148,10 @@ export class SharedDbWriteConfirmer {
       .replace('{{ADAPTERS}}', input.adapters)
       .replace('{{SITES}}', renderSites(sites));
     try {
-      const raw = await this.llm.chat(
-        [{ role: 'user', content: prompt }],
-        { temperature: 0, maxTokens: 128 },
-      );
+      const raw = await this.llm.chat([{ role: 'user', content: prompt }], {
+        temperature: 0,
+        maxTokens: 128,
+      });
       const parsed = parseLlmJsonResponse(raw);
       return VerdictSchema.parse(parsed);
     } catch (err) {

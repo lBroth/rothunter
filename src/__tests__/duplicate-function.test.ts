@@ -23,13 +23,35 @@ function makeFn(
     .split(' ')
     .filter((t) => t.length > 0);
   const KEEP = new Set([
-    'if', 'else', 'for', 'while', 'return', 'throw', 'try', 'catch', 'await', 'async',
-    'const', 'let', 'var', 'new', 'true', 'false', 'null', 'undefined', 'this',
-    'string', 'number', 'boolean', 'void', 'Promise', 'Array', 'Map', 'Set',
+    'if',
+    'else',
+    'for',
+    'while',
+    'return',
+    'throw',
+    'try',
+    'catch',
+    'await',
+    'async',
+    'const',
+    'let',
+    'var',
+    'new',
+    'true',
+    'false',
+    'null',
+    'undefined',
+    'this',
+    'string',
+    'number',
+    'boolean',
+    'void',
+    'Promise',
+    'Array',
+    'Map',
+    'Set',
   ]);
-  const anon = tokens.map((t) =>
-    /^[A-Za-z_$][\w$]*$/.test(t) && !KEEP.has(t) ? '_' : t,
-  );
+  const anon = tokens.map((t) => (/^[A-Za-z_$][\w$]*$/.test(t) && !KEEP.has(t) ? '_' : t));
   const shingles = new Set<string>();
   for (let i = 0; i + 4 <= anon.length; i++) shingles.add(anon.slice(i, i + 4).join(' '));
   if (anon.length < 4) shingles.add(anon.join(' '));
@@ -92,14 +114,20 @@ describe('DuplicateFunctionDetector', () => {
       makeFn(
         'uploadA',
         'a.ts',
-        [['bucket', 'string'], ['payload', 'Buffer']],
+        [
+          ['bucket', 'string'],
+          ['payload', 'Buffer'],
+        ],
         'Promise<string>',
         '{ const key = derive(bucket); if (!key) throw new Error("x"); await send(key, payload); return key; }',
       ),
       makeFn(
         'uploadB',
         'b.ts',
-        [['folder', 'string'], ['blob', 'Buffer']],
+        [
+          ['folder', 'string'],
+          ['blob', 'Buffer'],
+        ],
         'Promise<string>',
         '{ const handle = pick(folder); if (!handle) throw new Error("x"); await push(handle, blob); return handle; }',
       ),
@@ -122,14 +150,20 @@ describe('DuplicateFunctionDetector', () => {
       makeFn(
         'applyTax',
         'a.ts',
-        [['amount', 'number'], ['rate', 'number']],
+        [
+          ['amount', 'number'],
+          ['rate', 'number'],
+        ],
         'number',
         '{ return amount * (1 + rate); }',
       ),
       makeFn(
         'applyDiscount',
         'b.ts',
-        [['amount', 'number'], ['rate', 'number']],
+        [
+          ['amount', 'number'],
+          ['rate', 'number'],
+        ],
         'number',
         '{ return amount * (1 - rate); }',
       ),
@@ -162,8 +196,26 @@ describe('DuplicateFunctionDetector', () => {
 
   it('does NOT cluster identical-skeleton functions whose parameter types differ', async () => {
     const findings = await runDetector([
-      makeFn('addNum', 'a.ts', [['a', 'number'], ['b', 'number']], 'number', '{ const s = a + b; return s; }'),
-      makeFn('addStr', 'b.ts', [['a', 'string'], ['b', 'string']], 'string', '{ const s = a + b; return s; }'),
+      makeFn(
+        'addNum',
+        'a.ts',
+        [
+          ['a', 'number'],
+          ['b', 'number'],
+        ],
+        'number',
+        '{ const s = a + b; return s; }',
+      ),
+      makeFn(
+        'addStr',
+        'b.ts',
+        [
+          ['a', 'string'],
+          ['b', 'string'],
+        ],
+        'string',
+        '{ const s = a + b; return s; }',
+      ),
     ]);
     expect(findings).toHaveLength(0);
   });

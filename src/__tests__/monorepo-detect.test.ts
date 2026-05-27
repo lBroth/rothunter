@@ -56,10 +56,7 @@ describe('monorepo auto-detect', () => {
 
   it('picks up pnpm-workspace.yaml entries', async () => {
     const root = await setup({
-      'pnpm-workspace.yaml':
-        'packages:\n' +
-        '  - "packages/*"\n' +
-        '  - "!packages/legacy"\n',
+      'pnpm-workspace.yaml': 'packages:\n' + '  - "packages/*"\n' + '  - "!packages/legacy"\n',
       'packages/lib/package.json': JSON.stringify({ name: '@x/lib' }),
       'packages/legacy/package.json': JSON.stringify({ name: '@x/legacy' }),
     });

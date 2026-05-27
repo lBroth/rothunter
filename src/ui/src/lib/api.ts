@@ -32,14 +32,7 @@ export interface Finding {
 
 export interface ScanRecord {
   scanId: string;
-  state:
-    | 'queued'
-    | 'parsing'
-    | 'detecting'
-    | 'llm-start'
-    | 'llm-verdict'
-    | 'done'
-    | 'error';
+  state: 'queued' | 'parsing' | 'detecting' | 'llm-start' | 'llm-verdict' | 'done' | 'error';
   startedAt: number;
   finishedAt?: number;
   findings?: Finding[];
@@ -51,14 +44,7 @@ export interface ScanRecord {
 export interface ScanSseEvent {
   scanId: string;
   ts: number;
-  state:
-    | 'queued'
-    | 'parsing'
-    | 'detecting'
-    | 'llm-start'
-    | 'llm-verdict'
-    | 'done'
-    | 'error';
+  state: 'queued' | 'parsing' | 'detecting' | 'llm-start' | 'llm-verdict' | 'done' | 'error';
   files?: number;
   symbols?: number;
   detector?: string;
@@ -169,7 +155,10 @@ export async function rerunFindingVerdict(fingerprint: string): Promise<RerunRes
   });
   if (res.status === 422) {
     const body = (await res.json()) as { reason?: string };
-    return { status: 'unsupported', reason: body.reason ?? 'detector not eligible for single-finding rerun' };
+    return {
+      status: 'unsupported',
+      reason: body.reason ?? 'detector not eligible for single-finding rerun',
+    };
   }
   if (!res.ok) throw new Error(`/api/findings/${fingerprint}/rerun → ${res.status}`);
   return (await res.json()) as RerunResult;
@@ -216,7 +205,10 @@ export async function listMarkedToFix(): Promise<{ fingerprints: string[]; findi
   return (await res.json()) as { fingerprints: string[]; findings: Finding[] };
 }
 
-export async function generateCombinedFixPrompt(): Promise<{ prompt: string; findingCount: number }> {
+export async function generateCombinedFixPrompt(): Promise<{
+  prompt: string;
+  findingCount: number;
+}> {
   const res = await fetch('/api/marked-to-fix/prompt', { method: 'POST' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -225,7 +217,9 @@ export async function generateCombinedFixPrompt(): Promise<{ prompt: string; fin
   return (await res.json()) as { prompt: string; findingCount: number };
 }
 
-export async function getScanLlmStats(scanId: string): Promise<{ scanId: string; state: string; stats: LlmStats }> {
+export async function getScanLlmStats(
+  scanId: string,
+): Promise<{ scanId: string; state: string; stats: LlmStats }> {
   const res = await fetch(`/api/scans/${encodeURIComponent(scanId)}/llm-stats`);
   if (!res.ok) throw new Error(`/api/scans/${scanId}/llm-stats → ${res.status}`);
   return (await res.json()) as { scanId: string; state: string; stats: LlmStats };

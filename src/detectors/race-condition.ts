@@ -143,12 +143,14 @@ export function detectRaceConditions(input: RaceConditionDetectorInput): Finding
 
 function collectModuleMutables(sf: { getVariableStatements(): unknown[] }): Set<string> {
   const out = new Set<string>();
-  const statements = (sf as {
-    getVariableStatements(): Array<{
-      getDeclarationKind(): string;
-      getDeclarations(): Array<{ getName(): string; getNameNode(): Node }>;
-    }>;
-  }).getVariableStatements();
+  const statements = (
+    sf as {
+      getVariableStatements(): Array<{
+        getDeclarationKind(): string;
+        getDeclarations(): Array<{ getName(): string; getNameNode(): Node }>;
+      }>;
+    }
+  ).getVariableStatements();
   for (const stmt of statements) {
     const kind = stmt.getDeclarationKind();
     if (kind !== 'let' && kind !== 'var') continue;
@@ -160,7 +162,11 @@ function collectModuleMutables(sf: { getVariableStatements(): unknown[] }): Set<
   return out;
 }
 
-function analyzeAsync(fn: AsyncCallable, file: string, moduleMutables: Set<string>): RaceCandidate[] {
+function analyzeAsync(
+  fn: AsyncCallable,
+  file: string,
+  moduleMutables: Set<string>,
+): RaceCandidate[] {
   if (!(fn as { isAsync(): boolean }).isAsync()) return [];
   const body = (fn as { getBody?: () => Node | undefined }).getBody?.();
   if (!body) return [];
@@ -380,10 +386,7 @@ function analyzeParallelMapCallback(
 
   const [cb] = mapCall.getArguments();
   if (!cb) return [];
-  if (
-    cb.getKind() !== SyntaxKind.ArrowFunction &&
-    cb.getKind() !== SyntaxKind.FunctionExpression
-  ) {
+  if (cb.getKind() !== SyntaxKind.ArrowFunction && cb.getKind() !== SyntaxKind.FunctionExpression) {
     return [];
   }
   const fn = cb as ArrowFunction | FunctionExpression;
@@ -393,7 +396,9 @@ function analyzeParallelMapCallback(
   if (!body) return [];
 
   // Collect shared-target writes that follow an `await`.
-  const awaits = body.getDescendantsOfKind(SyntaxKind.AwaitExpression).map((a) => a.getStartLineNumber());
+  const awaits = body
+    .getDescendantsOfKind(SyntaxKind.AwaitExpression)
+    .map((a) => a.getStartLineNumber());
   if (awaits.length === 0) return [];
   const firstAwait = Math.min(...awaits);
 
@@ -551,10 +556,7 @@ function collectOuterMutables(call: Node, handler: Node): Set<string> {
   const out = new Set<string>();
   let cur: Node | undefined = call.getParent();
   while (cur) {
-    if (
-      cur.getKind() === SyntaxKind.Block ||
-      cur.getKind() === SyntaxKind.SourceFile
-    ) {
+    if (cur.getKind() === SyntaxKind.Block || cur.getKind() === SyntaxKind.SourceFile) {
       const stmts = (cur as { getVariableStatements?: () => unknown[] }).getVariableStatements?.();
       if (Array.isArray(stmts)) {
         for (const stmt of stmts as Array<{
@@ -610,8 +612,6 @@ function hasIgnoreAnnotation(node: Node): boolean {
   const text = sf.getFullText().slice(Math.max(0, fullStart - 200), fullStart);
   return text.includes(IGNORE_ANNOTATION);
 }
-
-
 
 function toFinding(c: RaceCandidate): Finding {
   const title = `Read-modify-write across \`await\` on ${c.target}`;
@@ -691,4 +691,3 @@ function promiseAllToFinding(r: PromiseAllRace): Finding {
     fingerprint: `race:promise-all:${stableHash(`${r.file}::${r.target}::${r.callLine}`)}`,
   };
 }
-

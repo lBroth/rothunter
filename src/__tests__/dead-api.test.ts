@@ -30,7 +30,8 @@ describe('dead-api detector + multi-workspace scanner', () => {
       'backend/src/index.ts': "export { used, unused } from './api';\n",
       'backend/src/api.ts': 'export function used(): void {}\nexport function unused(): void {}\n',
       'frontend/package.json': '{"name":"@x/frontend","version":"0.1.0"}',
-      'frontend/src/index.ts': "import { used } from '@x/backend';\nexport function main(): void { used(); }\n",
+      'frontend/src/index.ts':
+        "import { used } from '@x/backend';\nexport function main(): void { used(); }\n",
     });
     try {
       const config = loadRotHunterConfig(root);
@@ -40,14 +41,10 @@ describe('dead-api detector + multi-workspace scanner', () => {
       const findings = detectDeadApis({ symbols, imports: multi.imports });
       const titles = findings.map((f) => f.title);
       expect(titles).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining('Unused public API: unused'),
-        ]),
+        expect.arrayContaining([expect.stringContaining('Unused public API: unused')]),
       );
       expect(titles).not.toEqual(
-        expect.arrayContaining([
-          expect.stringContaining('Unused public API: used'),
-        ]),
+        expect.arrayContaining([expect.stringContaining('Unused public API: used')]),
       );
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
@@ -78,16 +75,12 @@ describe('dead-api detector + multi-workspace scanner', () => {
       const titles = findings.map((f) => f.title);
       // `unused` is genuinely unused — flagged.
       expect(titles).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining('Unused public API: unused'),
-        ]),
+        expect.arrayContaining([expect.stringContaining('Unused public API: unused')]),
       );
       // `User` and `getUser` reach a frontend consumer via the barrel — NOT flagged.
       for (const reached of ['User', 'getUser']) {
         expect(titles).not.toEqual(
-          expect.arrayContaining([
-            expect.stringContaining(`Unused public API: ${reached}`),
-          ]),
+          expect.arrayContaining([expect.stringContaining(`Unused public API: ${reached}`)]),
         );
       }
     } finally {
@@ -104,9 +97,11 @@ describe('dead-api detector + multi-workspace scanner', () => {
         ],
       }),
       'lib/package.json': '{"name":"@x/lib","version":"0.1.0"}',
-      'lib/src/index.ts': 'export function a(): void {}\nexport function b(): void {}\nexport function c(): void {}\n',
+      'lib/src/index.ts':
+        'export function a(): void {}\nexport function b(): void {}\nexport function c(): void {}\n',
       'consumer/package.json': '{"name":"@x/consumer","version":"0.1.0"}',
-      'consumer/src/index.ts': "import * as L from '@x/lib';\nexport function pick(): void { L.a(); }\n",
+      'consumer/src/index.ts':
+        "import * as L from '@x/lib';\nexport function pick(): void { L.a(); }\n",
     });
     try {
       const config = loadRotHunterConfig(root);
@@ -118,9 +113,7 @@ describe('dead-api detector + multi-workspace scanner', () => {
       // conservative — every export of lib is considered consumed by consumer.
       for (const name of ['a', 'b', 'c']) {
         expect(titles).not.toEqual(
-          expect.arrayContaining([
-            expect.stringContaining(`Unused public API: ${name} `),
-          ]),
+          expect.arrayContaining([expect.stringContaining(`Unused public API: ${name} `)]),
         );
       }
     } finally {

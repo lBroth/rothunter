@@ -228,7 +228,6 @@ export function Settings(): JSX.Element {
           </div>
         )}
 
-
         {settings?.comingSoon && settings.comingSoon.length > 0 && (
           <div className="border-t border-border-soft">
             <header className="px-5 py-2.5 flex items-baseline gap-2 bg-bg/40">
@@ -263,7 +262,9 @@ export function Settings(): JSX.Element {
           <span className="text-xs text-muted font-mono">
             {(() => {
               const url = settings?.llm.baseUrl ?? '';
-              if (/^https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(url)) {
+              if (
+                /^https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(url)
+              ) {
                 return 'local backend (auto-detected: llama.cpp · docker)';
               }
               return url ? 'remote endpoint' : 'not configured';
@@ -383,7 +384,10 @@ export function Settings(): JSX.Element {
               <span>1.00 · disable auto-FP</span>
             </div>
             <div className="mt-3 rounded border border-border-soft bg-bg px-3 py-2 text-[11px] text-muted font-mono leading-relaxed">
-              Confidence floor at which a negative LLM verdict routes a finding to the auto-FP bucket. Lower values (≈ 0.5) are aggressive — almost every "intentional / FP" LLM call auto-routes. Higher values (≈ 0.9) are strict — only very-confident verdicts move out of the open list.
+              Confidence floor at which a negative LLM verdict routes a finding to the auto-FP
+              bucket. Lower values (≈ 0.5) are aggressive — almost every "intentional / FP" LLM call
+              auto-routes. Higher values (≈ 0.9) are strict — only very-confident verdicts move out
+              of the open list.
             </div>
           </div>
         )}

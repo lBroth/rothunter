@@ -105,7 +105,8 @@ export function detectMutations(input: MutationDetectorInput): Finding[] {
       candidates.push(...analyzeCallable(fn, relativeFile, moduleMutables));
     }
     for (const cls of sf.getClasses()) {
-      for (const m of cls.getMethods()) candidates.push(...analyzeCallable(m, relativeFile, moduleMutables));
+      for (const m of cls.getMethods())
+        candidates.push(...analyzeCallable(m, relativeFile, moduleMutables));
     }
     for (const arrow of sf.getDescendantsOfKind(SyntaxKind.ArrowFunction)) {
       candidates.push(...analyzeCallable(arrow, relativeFile, moduleMutables));
@@ -127,12 +128,14 @@ export function detectMutations(input: MutationDetectorInput): Finding[] {
  */
 function collectModuleMutables(sf: { getVariableStatements(): unknown[] }): Set<string> {
   const out = new Set<string>();
-  const statements = (sf as {
-    getVariableStatements(): Array<{
-      getDeclarationKind(): string;
-      getDeclarations(): Array<{ getName(): string; getNameNode(): Node }>;
-    }>;
-  }).getVariableStatements();
+  const statements = (
+    sf as {
+      getVariableStatements(): Array<{
+        getDeclarationKind(): string;
+        getDeclarations(): Array<{ getName(): string; getNameNode(): Node }>;
+      }>;
+    }
+  ).getVariableStatements();
   for (const stmt of statements) {
     const kind = stmt.getDeclarationKind();
     if (kind !== 'let' && kind !== 'var') continue;
@@ -263,7 +266,10 @@ function analyzeCallable(fn: Callable, file: string, moduleMutables: Set<string>
     if (!ASSIGNMENT_OPERATORS.has(opText)) continue;
     if (hasIgnoreAnnotation(bin)) continue;
     const lhs = bin.getLeft();
-    if (lhs.getKind() !== SyntaxKind.PropertyAccessExpression && lhs.getKind() !== SyntaxKind.ElementAccessExpression) {
+    if (
+      lhs.getKind() !== SyntaxKind.PropertyAccessExpression &&
+      lhs.getKind() !== SyntaxKind.ElementAccessExpression
+    ) {
       continue;
     }
     const root = identifierRoot(lhs);
@@ -369,7 +375,6 @@ function hasIgnoreAnnotation(node: Node): boolean {
   return text.includes(IGNORE_ANNOTATION);
 }
 
-
 function toFinding(c: RawCandidate): Finding {
   // Severity matrix (per ROADMAP):
   //   mutate-and-escape > mutate-shared-module > mutate-local
@@ -436,7 +441,6 @@ function toFinding(c: RawCandidate): Finding {
     fingerprint: `mutation:${c.pattern}:${stableHash(`${c.file}::${c.line}::${c.target}`)}`,
   };
 }
-
 
 /**
  * Compress the enclosing function source so the LLM prompt stays in budget.

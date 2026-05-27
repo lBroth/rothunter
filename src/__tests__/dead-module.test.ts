@@ -110,8 +110,8 @@ describe('import graph + dead-module detector', () => {
         null,
         2,
       ),
-      'packages/gateway/src/dev.ts': "export function dev(): void {}\n",
-      'scripts/seed.ts': "export function seed(): void {}\n",
+      'packages/gateway/src/dev.ts': 'export function dev(): void {}\n',
+      'scripts/seed.ts': 'export function seed(): void {}\n',
       'src/orphan.ts': 'export function orphan(): void {}\n',
     });
     try {
@@ -142,7 +142,7 @@ describe('import graph + dead-module detector', () => {
 
   it('skips ambient declaration files (`*.d.ts`)', async () => {
     const root = await setupWorkspace({
-      'index.ts': "export {};\n",
+      'index.ts': 'export {};\n',
       'global.d.ts': 'declare const X: number;\n',
     });
     try {

@@ -33,7 +33,9 @@ describe('bad-config detector', () => {
     });
     try {
       const findings = detectBadConfig({ workspaceRoot: root, files: [] });
-      expect(findings.some((f) => f.severity === 'medium' && /strict.*not set/.test(f.title))).toBe(true);
+      expect(findings.some((f) => f.severity === 'medium' && /strict.*not set/.test(f.title))).toBe(
+        true,
+      );
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -129,7 +131,9 @@ describe('bad-config detector', () => {
     });
     try {
       const findings = detectBadConfig({ workspaceRoot: root, files: [] });
-      expect(findings.some((f) => f.severity === 'high' && /strict.*disabled/.test(f.title))).toBe(true);
+      expect(findings.some((f) => f.severity === 'high' && /strict.*disabled/.test(f.title))).toBe(
+        true,
+      );
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

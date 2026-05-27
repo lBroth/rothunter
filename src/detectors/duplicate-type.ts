@@ -160,18 +160,22 @@ export class DuplicateTypeDetector implements Detector {
     const matchedByLabel: Record<MatchedBy, string> = {
       strict: 'Same fields, same names, same types',
       structural: 'Same field types, different names (anonymous structural match)',
-      'normalized-names': 'Same fields after normalizing naming convention (snake/camel + synonyms)',
+      'normalized-names':
+        'Same fields after normalizing naming convention (snake/camel + synonyms)',
     };
-    const extra = c.signals.size > 1
-      ? `\nAlso matches at: ${Array.from(c.signals).filter((s) => s !== c.matchedBy).join(', ')}.`
-      : '';
+    const extra =
+      c.signals.size > 1
+        ? `\nAlso matches at: ${Array.from(c.signals)
+            .filter((s) => s !== c.matchedBy)
+            .join(', ')}.`
+        : '';
     return `Match level: ${matchedByLabel[c.matchedBy]} (layer ${c.layer}).${extra}\nLocations:\n${where}`;
   }
 }
 
 function isStructurallyTrivial(s: SymbolRecord): boolean {
   const struct = s.structure;
-  const fields = struct && 'fields' in struct ? struct.fields ?? [] : [];
+  const fields = struct && 'fields' in struct ? (struct.fields ?? []) : [];
   const kinds = new Set(fields.map(primitiveKindOf));
   // A complex field (method / object / array / union with non-primitive) is a
   // strong signal that the shape is meaningful. Allow it past the trivial gate
@@ -189,4 +193,3 @@ function primitiveKindOf(f: FieldStructure): string {
   }
   return 'complex';
 }
-

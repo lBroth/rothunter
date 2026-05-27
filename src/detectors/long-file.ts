@@ -4,7 +4,7 @@ import { stableHash } from '../utils/hash.js';
 import type { FileWalkingDetectorInput } from '../types/detector-input.js';
 
 export interface LongFileDetectorInput extends FileWalkingDetectorInput {
-/** LOW threshold in non-blank/non-comment lines. Default 400. */
+  /** LOW threshold in non-blank/non-comment lines. Default 400. */
   lowThreshold?: number;
   /** MED threshold. Default 700. */
   medThreshold?: number;
@@ -27,15 +27,15 @@ export function detectLongFiles(input: LongFileDetectorInput): Finding[] {
     if (raw == null) continue;
     const loc = countEffectiveLines(raw);
     if (loc < low) continue;
-    const severity: 'high' | 'medium' | 'low' = loc >= high ? 'high' : loc >= med ? 'medium' : 'low';
+    const severity: 'high' | 'medium' | 'low' =
+      loc >= high ? 'high' : loc >= med ? 'medium' : 'low';
     findings.push({
       detectorId: 'long-file',
       severity,
       confidence: 0.99,
       layer: 1,
       title: `Long file: ${rel} (${loc} LOC)`,
-      description:
-        `${loc} non-blank lines of code (excluding pure-comment lines). Files this size are hard to navigate, hard to test, and accumulate unrelated concerns. Common root cause: feature-by-feature additions without periodic refactoring.`,
+      description: `${loc} non-blank lines of code (excluding pure-comment lines). Files this size are hard to navigate, hard to test, and accumulate unrelated concerns. Common root cause: feature-by-feature additions without periodic refactoring.`,
       evidence: [
         {
           file: rel,
@@ -82,10 +82,11 @@ function countEffectiveLines(raw: string): number {
 }
 
 function isAnalysable(file: string): boolean {
-  return /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(file)
-    && !/\.d\.ts$/.test(file)
-    && !/(^|\/)node_modules\//.test(file)
-    && !/(^|\/)dist\//.test(file)
-    && !/\.generated\.(?:ts|js)$/.test(file);
+  return (
+    /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(file) &&
+    !/\.d\.ts$/.test(file) &&
+    !/(^|\/)node_modules\//.test(file) &&
+    !/(^|\/)dist\//.test(file) &&
+    !/\.generated\.(?:ts|js)$/.test(file)
+  );
 }
-

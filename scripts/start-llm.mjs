@@ -37,7 +37,9 @@ const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..');
 function requireEnv(name, fallback, pattern) {
   const v = process.env[name] ?? fallback;
   if (!pattern.test(v)) {
-    console.error(`[llm] refusing to launch — env ${name}=${JSON.stringify(v)} does not match ${pattern}`);
+    console.error(
+      `[llm] refusing to launch — env ${name}=${JSON.stringify(v)} does not match ${pattern}`,
+    );
     process.exit(1);
   }
   return v;
@@ -94,7 +96,11 @@ function writeMarker(payload) {
 }
 
 function clearMarker() {
-  try { unlinkSync(MARKER_PATH); } catch { /* already gone */ }
+  try {
+    unlinkSync(MARKER_PATH);
+  } catch {
+    /* already gone */
+  }
 }
 
 function run(cmd, args, marker) {
@@ -120,13 +126,19 @@ switch (backend) {
     run(
       'llama-server',
       [
-        '--hf-repo', MODEL_LLAMACPP_REPO,
-        '--hf-file', MODEL_LLAMACPP_FILE,
-        '--port', PORT,
-        '--host', HOST,
+        '--hf-repo',
+        MODEL_LLAMACPP_REPO,
+        '--hf-file',
+        MODEL_LLAMACPP_FILE,
+        '--port',
+        PORT,
+        '--host',
+        HOST,
         '--jinja',
-        '-c', '8192',
-        '-n', '256',
+        '-c',
+        '8192',
+        '-n',
+        '256',
       ],
       { backend: 'llamacpp', model: MODEL_LLAMACPP_REPO, port: PORT },
     );
@@ -138,11 +150,11 @@ switch (backend) {
       process.exit(1);
     }
     console.log('[llm] docker fallback — slower on macOS (no Metal in the VM)');
-    run(
-      'docker',
-      ['compose', '-f', compose, 'up', 'rothunter-llm'],
-      { backend: 'docker', model: MODEL_LLAMACPP_REPO, port: PORT },
-    );
+    run('docker', ['compose', '-f', compose, 'up', 'rothunter-llm'], {
+      backend: 'docker',
+      model: MODEL_LLAMACPP_REPO,
+      port: PORT,
+    });
     break;
   }
   default:

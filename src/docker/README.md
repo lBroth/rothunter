@@ -15,10 +15,10 @@ Open <http://localhost:3000>.
 
 ## Components
 
-| Service        | Image                                          | Purpose                                 |
-|----------------|------------------------------------------------|-----------------------------------------|
-| `rothunter`     | local build (Dockerfile)                       | Fastify API + React UI                  |
-| `rothunter-llm` | `ghcr.io/ggml-org/llama.cpp:server`            | Qwen2.5-Coder-14B Q4_K_M LLM verdict |
+| Service         | Image                               | Purpose                              |
+| --------------- | ----------------------------------- | ------------------------------------ |
+| `rothunter`     | local build (Dockerfile)            | Fastify API + React UI               |
+| `rothunter-llm` | `ghcr.io/ggml-org/llama.cpp:server` | Qwen2.5-Coder-14B Q4_K_M LLM verdict |
 
 ## Volumes
 

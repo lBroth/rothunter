@@ -75,16 +75,12 @@ export function resolveImport(
   specifier: string,
   tsconfigPaths?: TsconfigPaths | null,
 ): string | null {
-  const sourceAbs = path.isAbsolute(sourceFile)
-    ? sourceFile
-    : path.join(workspaceRoot, sourceFile);
+  const sourceAbs = path.isAbsolute(sourceFile) ? sourceFile : path.join(workspaceRoot, sourceFile);
 
   // Relative + absolute path resolution path.
   if (specifier.startsWith('.') || specifier.startsWith('/')) {
     const baseDir = path.dirname(sourceAbs);
-    const target = specifier.startsWith('/')
-      ? specifier
-      : path.resolve(baseDir, specifier);
+    const target = specifier.startsWith('/') ? specifier : path.resolve(baseDir, specifier);
 
     const candidates = [
       target,

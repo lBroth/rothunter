@@ -104,7 +104,10 @@ describe('TypeScriptParser', () => {
       export const Button = ({ label }: { label: string }) => '<' + label + '>';
       const internal = function (x: number) { return x + 1; };
     `);
-    const names = records.filter((r) => r.kind === 'function').map((r) => r.name).sort();
+    const names = records
+      .filter((r) => r.kind === 'function')
+      .map((r) => r.name)
+      .sort();
     expect(names).toEqual(['Button', 'greet', 'internal']);
   });
 

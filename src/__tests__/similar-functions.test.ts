@@ -123,10 +123,7 @@ describe('similar-functions detector', () => {
   });
 
   it('ignores tiny stubs below minLines', () => {
-    const symbols = [
-      fn('a', 'a.ts', 'x'),
-      fn('a', 'b.ts', 'x'),
-    ];
+    const symbols = [fn('a', 'a.ts', 'x'), fn('a', 'b.ts', 'x')];
     const findings = detectSimilarFunctions({
       workspaceRoot: process.cwd(),
       symbols,
@@ -138,14 +135,21 @@ describe('similar-functions detector', () => {
 
   it('honors the similarity threshold knob', () => {
     const body = 'parse json return data';
-    const symbols = [
-      fn('foo', 'a.ts', body),
-      fn('bar', 'b.ts', body + ' tweak'),
-    ];
+    const symbols = [fn('foo', 'a.ts', body), fn('bar', 'b.ts', body + ' tweak')];
     // Same bodies, very different names — combined score is dragged down
     // by name component but body still pushes it through at low threshold.
-    const lax = detectSimilarFunctions({ workspaceRoot: process.cwd(), symbols, similarityThreshold: 0.4, minLines: 1 });
-    const strict = detectSimilarFunctions({ workspaceRoot: process.cwd(), symbols, similarityThreshold: 0.9, minLines: 1 });
+    const lax = detectSimilarFunctions({
+      workspaceRoot: process.cwd(),
+      symbols,
+      similarityThreshold: 0.4,
+      minLines: 1,
+    });
+    const strict = detectSimilarFunctions({
+      workspaceRoot: process.cwd(),
+      symbols,
+      similarityThreshold: 0.9,
+      minLines: 1,
+    });
     expect(lax.length).toBeGreaterThanOrEqual(1);
     expect(strict).toEqual([]);
   });

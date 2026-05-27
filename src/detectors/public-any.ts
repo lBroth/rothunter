@@ -27,8 +27,7 @@ export function detectPublicAny(input: PublicAnyDetectorInput): Finding[] {
       confidence: 0.97,
       layer: 1,
       title: `Public \`any\` in \`${sym.name}\` (${sym.file})`,
-      description:
-        `Exported function \`${sym.name}\` exposes \`any\` in its signature (${where.join(', ')}). Every caller silently loses type-safety on this boundary.`,
+      description: `Exported function \`${sym.name}\` exposes \`any\` in its signature (${where.join(', ')}). Every caller silently loses type-safety on this boundary.`,
       evidence: [
         {
           file: sym.file,
@@ -53,4 +52,3 @@ function containsAny(type: string): boolean {
   // Word-boundary match; excludes `Many`, `anyway`, `JsonAny` etc.
   return /\bany\b/.test(type);
 }
-

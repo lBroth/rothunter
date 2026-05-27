@@ -117,10 +117,7 @@ function shouldSkipFile(file: string): boolean {
  * through a sibling is rare; relying on the named-import path keeps
  * the FP risk low.
  */
-function isTypeSurface(
-  sym: SymbolRecord,
-  symbolsByFile: Map<string, SymbolRecord[]>,
-): boolean {
+function isTypeSurface(sym: SymbolRecord, symbolsByFile: Map<string, SymbolRecord[]>): boolean {
   // Restricted to symbols whose surface is naturally referenced from a
   // sibling — types from signatures, helpers from another function's
   // body. Enum / class also count: extending or referencing the type
@@ -149,4 +146,3 @@ function isTypeSurface(
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-

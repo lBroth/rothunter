@@ -84,9 +84,13 @@ export class LlmClient {
       });
       if (!res.ok) return this.resolvedModel;
       const data = (await res.json()) as { data?: Array<{ id?: string }> };
-      const ids = (data.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === 'string');
+      const ids = (data.data ?? [])
+        .map((m) => m.id)
+        .filter((id): id is string => typeof id === 'string');
       if (ids.length === 0) return this.resolvedModel;
-      const looksLocal = /127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal/.test(this.baseUrl);
+      const looksLocal = /127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal/.test(
+        this.baseUrl,
+      );
       this.resolvedBackend = looksLocal ? 'llamacpp' : 'remote';
 
       // Honour the operator override when set + still reachable;
@@ -157,10 +161,11 @@ export class LlmClient {
    */
   async warmup(): Promise<boolean> {
     try {
-      await this.chat(
-        [{ role: 'user', content: 'ok' }],
-        { temperature: 0, maxTokens: 1, timeoutMs: 5_000 },
-      );
+      await this.chat([{ role: 'user', content: 'ok' }], {
+        temperature: 0,
+        maxTokens: 1,
+        timeoutMs: 5_000,
+      });
       return true;
     } catch {
       return false;
@@ -178,7 +183,11 @@ function readLlmMarker(): { backend?: string; model?: string; port?: string } | 
   try {
     const p = path.join(os.homedir(), '.rothunter', 'llm-active.json');
     if (!fs.existsSync(p)) return null;
-    return JSON.parse(fs.readFileSync(p, 'utf-8')) as { backend?: string; model?: string; port?: string };
+    return JSON.parse(fs.readFileSync(p, 'utf-8')) as {
+      backend?: string;
+      model?: string;
+      port?: string;
+    };
   } catch {
     return null;
   }
@@ -201,7 +210,10 @@ export function createDefaultLlmClient(): LlmClient {
   // in the legal TCP-port range before interpolating into a URL so a
   // hostile marker can't redirect the engine at an arbitrary host.
   const markerPort =
-    marker?.port && /^\d{1,5}$/.test(marker.port) && Number(marker.port) > 0 && Number(marker.port) <= 65_535
+    marker?.port &&
+    /^\d{1,5}$/.test(marker.port) &&
+    Number(marker.port) > 0 &&
+    Number(marker.port) <= 65_535
       ? marker.port
       : undefined;
   const baseUrl =
@@ -215,7 +227,6 @@ export function createDefaultLlmClient(): LlmClient {
       process.env.ROTHUNTER_LLM_API_KEY ??
       process.env.OPENROUTER_API_KEY ??
       process.env.OPENAI_API_KEY,
-    defaultTimeoutMs:
-      Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : undefined,
+    defaultTimeoutMs: Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : undefined,
   });
 }
