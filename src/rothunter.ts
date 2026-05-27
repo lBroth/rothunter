@@ -941,7 +941,8 @@ async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Findi
   // shell sources the TS parser skips. No `files` arg by design.
   run('todo-comments', () => detectTodoComments({ workspaceRoot: ctx.workspaceRoot }));
   run('env-var-undeclared', () =>
-    detectEnvVarUndeclared({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }));
+    detectEnvVarUndeclared({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
 
   return findings;
 }
