@@ -30,6 +30,7 @@ import { detectReExportShadows } from './detectors/re-export-shadow.js';
 import { detectDefaultExportNameDrift } from './detectors/default-export-name-drift.js';
 import { detectEnvVarUndeclared } from './detectors/env-var-undeclared.js';
 import { detectPackageExportMismatch } from './detectors/package-export-mismatch.js';
+import { detectSchemaShapeDivergence } from './detectors/schema-shape-divergence.js';
 import { TypeScriptParser, type ParseOptions } from './parsers/typescript-parser.js';
 import { TypeNormalizer } from './normalizers/type-normalizer.js';
 import { buildImportGraph, reachableFrom } from './graph/import-graph.js';
@@ -228,6 +229,9 @@ export class RotHunter {
     );
     emit({ state: 'detecting', detector: 'default-export-name-drift' });
     findings.push(...detectDefaultExportNameDrift({ symbols, imports: parsed.imports }));
+    logger.info({ symbols: symbols.length }, 'RotHunter: running detector schema-shape-divergence');
+    emit({ state: 'detecting', detector: 'schema-shape-divergence' });
+    findings.push(...detectSchemaShapeDivergence({ symbols }));
 
     if (!isMulti) {
       // Single-workspace path: paths are already real workspace-relative.
