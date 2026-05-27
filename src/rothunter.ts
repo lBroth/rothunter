@@ -29,6 +29,7 @@ import { detectTodoComments } from './detectors/todo-comments.js';
 import { detectReExportShadows } from './detectors/re-export-shadow.js';
 import { detectDefaultExportNameDrift } from './detectors/default-export-name-drift.js';
 import { detectEnvVarUndeclared } from './detectors/env-var-undeclared.js';
+import { detectPackageExportMismatch } from './detectors/package-export-mismatch.js';
 import { TypeScriptParser, type ParseOptions } from './parsers/typescript-parser.js';
 import { TypeNormalizer } from './normalizers/type-normalizer.js';
 import { buildImportGraph, reachableFrom } from './graph/import-graph.js';
@@ -942,6 +943,9 @@ async function runWorkspaceLocalDetectors(ctx: WorkspaceLocalCtx): Promise<Findi
   run('todo-comments', () => detectTodoComments({ workspaceRoot: ctx.workspaceRoot }));
   run('env-var-undeclared', () =>
     detectEnvVarUndeclared({ workspaceRoot: ctx.workspaceRoot, files, project: sharedProject }),
+  );
+  run('package-export-mismatch', () =>
+    detectPackageExportMismatch({ workspaceRoot: ctx.workspaceRoot }),
   );
 
   return findings;
