@@ -21,21 +21,17 @@ async function setup(files: Record<string, string>): Promise<string> {
 describe('re-export-shadow — full RotHunter pipeline', () => {
   it('surfaces a shadowed re-export in the final findings list', async () => {
     const root = await setup({
-      'src/index.ts':
-        "export { handler } from './v1';\nexport { handler } from './v2';\n",
+      'src/index.ts': "export { handler } from './v1';\nexport { handler } from './v2';\n",
       'src/v1.ts': 'export function handler(): string { return "v1"; }\n',
       'src/v2.ts': 'export function handler(): string { return "v2"; }\n',
       // Give the workspace one real consumer so dead-export doesn't drown
       // the report — we only care about re-export-shadow here.
-      'src/consumer.ts':
-        "import { handler } from './index';\nhandler();\n",
+      'src/consumer.ts': "import { handler } from './index';\nhandler();\n",
     });
     try {
       const rothunter = new RotHunter();
       const result = await rothunter.run({ workspaceRoot: root });
-      const shadows = result.findings.filter(
-        (f) => f.detectorId === 're-export-shadow',
-      );
+      const shadows = result.findings.filter((f) => f.detectorId === 're-export-shadow');
       expect(shadows.length).toBeGreaterThanOrEqual(1);
       expect(shadows[0]!.title).toContain('handler');
       expect(shadows[0]!.title).toContain('src/index.ts');
@@ -57,9 +53,7 @@ describe('re-export-shadow — full RotHunter pipeline', () => {
     try {
       const rothunter = new RotHunter();
       const result = await rothunter.run({ workspaceRoot: root });
-      const shadows = result.findings.filter(
-        (f) => f.detectorId === 're-export-shadow',
-      );
+      const shadows = result.findings.filter((f) => f.detectorId === 're-export-shadow');
       expect(shadows).toHaveLength(1);
       expect(shadows[0]!.severity).toBe('high');
       expect(shadows[0]!.description).toContain('local declaration');
@@ -77,9 +71,7 @@ describe('re-export-shadow — full RotHunter pipeline', () => {
     try {
       const rothunter = new RotHunter();
       const result = await rothunter.run({ workspaceRoot: root });
-      const shadows = result.findings.filter(
-        (f) => f.detectorId === 're-export-shadow',
-      );
+      const shadows = result.findings.filter((f) => f.detectorId === 're-export-shadow');
       expect(shadows).toEqual([]);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });

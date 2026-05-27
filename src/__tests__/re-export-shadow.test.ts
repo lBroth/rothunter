@@ -45,8 +45,7 @@ describe('re-export-shadow detector', () => {
 
   it('flags a re-export that shadows a sibling local declaration (HIGH)', async () => {
     const root = await setupWorkspace({
-      'index.ts':
-        "export function Foo(): number { return 0; }\nexport { Foo } from './other';\n",
+      'index.ts': "export function Foo(): number { return 0; }\nexport { Foo } from './other';\n",
       'other.ts': 'export function Foo(): number { return 99; }\n',
     });
     try {
@@ -91,8 +90,7 @@ describe('re-export-shadow detector', () => {
 
   it('does NOT flag when one side is aliased to a distinct name', async () => {
     const root = await setupWorkspace({
-      'index.ts':
-        "export { Foo } from './a';\nexport { Foo as FooLegacy } from './b';\n",
+      'index.ts': "export { Foo } from './a';\nexport { Foo as FooLegacy } from './b';\n",
       'a.ts': 'export function Foo(): void {}\n',
       'b.ts': 'export function Foo(): void {}\n',
     });
