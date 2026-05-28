@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0-rc.3] — 2026-05-28
+
+### Added
+
+- **Clone-free docker compose stack.** New file
+  `src/docker/docker-compose.standalone.yml` pulls the pre-built
+  `ghcr.io/lbroth/rothunter:latest` image instead of building from
+  source. Operators can now boot the full engine + UI + llama.cpp
+  sidecar with a single piped curl, no clone required:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/lBroth/rothunter/main/src/docker/docker-compose.standalone.yml \
+    | ROTHUNTER_WORKSPACE_HOST=$(pwd) docker compose -f - up
+  ```
+  The original `docker-compose.yml` (which uses `build:` from source)
+  stays as the developer flow — `npm run docker` continues to work
+  unchanged. README + site landing updated.
+
 ## [1.1.0-rc.2] — 2026-05-28
 
 ### Added

@@ -86,14 +86,31 @@ docker run --rm -p 3000:3000 \
   ghcr.io/lbroth/rothunter:latest
 ```
 
-### Docker Compose — bundles llama.cpp + Qwen2.5-Coder-14B
+### Docker Compose — bundles llama.cpp + Qwen2.5-Coder-14B (no clone)
 
-For "one command, everything boots" (downloads 9 GB on first run):
+For "one command, everything boots" — pulls pre-built images, ~9 GB
+model download on first run pinned to a named volume:
 
 ```bash
-git clone https://github.com/lBroth/rothunter && cd rothunter
-ROTHUNTER_WORKSPACE_HOST=/path/to/your-repo npm run docker
+curl -fsSL https://raw.githubusercontent.com/lBroth/rothunter/main/src/docker/docker-compose.standalone.yml \
+  | ROTHUNTER_WORKSPACE_HOST=$(pwd) docker compose -f - up
 ```
+
+Open <http://localhost:3000>. `ROTHUNTER_WORKSPACE_HOST` selects which
+host directory the engine mounts as the workspace — default is the
+directory you ran the command from. Stop with `Ctrl+C`, restart in
+seconds (model weights cached in the `rothunter-models` volume).
+
+If you'd rather drop a file in the cwd first:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lBroth/rothunter/main/src/docker/docker-compose.standalone.yml \
+  -o rothunter-compose.yml
+ROTHUNTER_WORKSPACE_HOST=$(pwd) docker compose -f rothunter-compose.yml up
+```
+
+**Developers cloning the repo** — `npm run docker` still works and
+builds the rothunter image from source via `src/docker/docker-compose.yml`.
 
 ### Running your own LLM
 
