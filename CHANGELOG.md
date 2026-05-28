@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0-rc.4] — 2026-05-28
+
+### Changed
+
+- **Repo description / `package.json#description`** rewritten to match
+  the 1.1.0 positioning ("Catches the hard spots ESLint and tsc can't
+  reach"). The 24-detector count was years behind reality.
+- **ROADMAP.md** gains a "Shipped in 1.1.0" section listing the nine
+  detectors that landed since v1.0.0-rc.7 so the file isn't read as a
+  list of things still pending.
+- **CONTRIBUTING.md detector-author checklist** documents the
+  principle-driven default ON / OFF policy + adds an explicit step
+  for the e2e test (`<id>.e2e.test.ts` with 30 s timeout) every
+  detector now ships.
+
 ## [1.1.0-rc.3] — 2026-05-28
 
 ### Added

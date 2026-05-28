@@ -32,19 +32,35 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
    Take a `FileWalkingDetectorInput` or a custom shape — pick the
    tightest input that lets the detector run.
 2. **Registry**: add the id to `src/detector-registry.ts` so the
-   server lists it in the Settings page.
+   server lists it in the Settings page. Add to `MULTI_WORKSPACE_SKIPPED`
+   if the detector needs single-workspace file paths; to
+   `MULTI_WORKSPACE_ONLY` if it's cross-repo only (`dead-api` style).
 3. **Wire**: call the detector from `src/rothunter.ts`. File-walking
    - symbol-based + import-graph detectors each have a slot —
      follow the closest sibling.
-4. **Test**: add `src/__tests__/<id>.test.ts`. Cover the positive
-   case AND at least one false-positive shape — every detector
-   ships a per-finding LLM verdict path on top of the deterministic
-   check, but the deterministic layer must be precise on its own.
-5. **Prompt rubric** (when adding a TriageConfirmer detector):
+4. **Default ON / OFF policy**: rothunter ships ON only the
+   detectors lint and tsc structurally can't reach. If your detector
+   duplicates a standard ESLint rule (or a common plugin like
+   `eslint-plugin-jest`), add its id to `LINT_OVERLAP_DEFAULT_OFF`
+   in `src/server/settings-store.ts` with an inline comment naming
+   the equivalent rule. Cross-file / data-flow / contract / taint
+   detectors stay ON (no entry needed).
+5. **Unit test**: add `src/__tests__/<id>.test.ts`. Cover the
+   positive case AND at least one false-positive shape — every
+   detector ships a per-finding LLM verdict path on top of the
+   deterministic check, but the deterministic layer must be precise
+   on its own.
+6. **E2e test**: add `src/__tests__/<id>.e2e.test.ts` that drives
+   the detector through the full `RotHunter.run()` pipeline against
+   a temp workspace. Catches detector-not-wired and parser-emission
+   regressions the unit suite misses. Tests need a `30_000` timeout
+   to absorb the LLM warmup attempt.
+7. **Prompt rubric** (when adding a TriageConfirmer detector):
    update the rubric in `src/extraction/triage-confirmer.ts` so the
    LLM has detector-specific guidance.
-6. **Docs**: add a row to `docs/DETECTORS.md` (id, severity,
-   what it flags, what tunes it).
+8. **Docs**: add a row to `docs/DETECTORS.md` (id, severity, what
+   it flags, what tunes it) under the category that fits — Default
+   ON or Default OFF table.
 
 ## Detector quality bar
 

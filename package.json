@@ -1,7 +1,7 @@
 {
   "name": "@lbroth/rothunter",
-  "version": "1.1.0-rc.3",
-  "description": "Self-hosted code-hygiene engine for TypeScript / JavaScript codebases. Deterministic detectors + local LLM verdicts + dashboard.",
+  "version": "1.1.0-rc.4",
+  "description": "Catches the hard spots ESLint and tsc can't reach. 33 deterministic detectors + local LLM verdicts + dashboard. Cross-file reachability, concurrency data-flow, AST clustering, contract drift, taint flow. Self-hosted.",
   "license": "MIT",
   "author": "lBroth",
   "repository": {
