@@ -4,6 +4,35 @@ Detector ideas + improvements queued for future work. Each entry lists
 the problem it catches, the deterministic signal, and the acceptance
 criteria so the implementation has a clear bar.
 
+## Shipped in 1.1.0
+
+9 new detectors landed since v1.0.0-rc.7 and don't appear in the
+planned list below. Documented for context; full behaviour notes
+in [`docs/DETECTORS.md`](./docs/DETECTORS.md).
+
+- `re-export-shadow` — barrel re-exports the same name from two
+  different modules, or shadows a sibling local declaration
+- `default-export-name-drift` — a default export imported under 2+
+  different local names (half-done rename refactors)
+- `test-without-assertion` — `it()` / `test()` body with no
+  assertion call (default-off — `jest/expect-expect` overlap)
+- `env-var-undeclared` — `process.env.X` read but not declared in any
+  `.env.example` / Dockerfile / docker-compose
+- `package-export-mismatch` — `package.json` `main` / `exports` paths
+  that point at missing files (no TS source counterpart either)
+- `schema-shape-divergence` — model / DTO drift by 1-2 fields under a
+  shared name stem
+- `producer-consumer-field-drift` — server reads `req.body.X` no
+  client ever sends to that URL
+- `unsanitized-input-to-sink` — taint flow from request to a
+  dangerous sink (SQL / exec / fs / eval / dynamic import)
+- `dead-endpoint` — HTTP route declared but no fetch / axios callsite
+  in the workspace bucket reaches it
+
+Also in 1.1.0: principle-driven defaults (ON only where ESLint and
+tsc can't reach), Tailwind v3 → v4 migration, TypeScript 6 across
+engine + UI, clone-free docker compose stack.
+
 ## Planned detectors
 
 ### 1. `typescript-misuse` — TypeScript-as-JavaScript anti-patterns
