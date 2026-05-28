@@ -90,14 +90,14 @@ files: [admin-service/src/index.ts, promo-service/src/index.ts]
 
 ## Scenario 3 — single DB writer, fan-out callers
 
-`orderer-service` fans an order out across the system without
+`order-service` fans an order out across the system without
 awaiting anything:
 
 ```ts
-// packages/orderer-service/src/index.ts
+// packages/order-service/src/index.ts
 void fetch(`http://inventory-service:3000/api/inventory/${sku}`, {
   method: 'PUT',
-  body: JSON.stringify({ quantity: qty, source: `orderer:${orderId}` }),
+  body: JSON.stringify({ quantity: qty, source: `order:${orderId}` }),
 });
 void fetch(`http://notifier-service:3000/api/notify/order-placed`, ...);
 ```
@@ -123,7 +123,7 @@ asynchronously, and `api-race` catches that:
 ```
 api-race · HIGH
 Shared API write: `PUT /api/inventory/:param` called from 2 files (2 call sites, clients: fetch)
-files: [notifier-service/src/index.ts, orderer-service/src/index.ts]
+files: [notifier-service/src/index.ts, order-service/src/index.ts]
 ```
 
 ---
