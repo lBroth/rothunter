@@ -33,30 +33,26 @@ export interface AppSettings {
 
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
 
-// Detectors that ship OFF by default — operators opt in from the
-// Settings UI. Two distinct reasons land an id here:
+// Detectors that ship OFF by default. Single principle: an id lands
+// here iff a standard ESLint rule (or ESLint plugin) covers the same
+// surface, in which case rothunter's signal duplicates what the
+// project's own lint already produces.
 //
-//   1. Covered by a standard ESLint rule (or tsconfig strict). Running
-//      both produces duplicate noise when the project's own lint is
-//      configured. silent-catch / todo-comments / mutable-globals stay
-//      ON because no ESLint rule covers them with the same scope
-//      (silent-catch flags console-only + bare-return catches that
-//      no-empty does not; todo-comments scans non-TS files; no ESLint
-//      rule flags top-level reassigned `let` — prefer-const flags the
-//      opposite case).
-//
-//   2. New cross-file / heuristic detectors that are unique to
-//      rothunter but ship conservatively until operators have had a
-//      chance to validate them on their codebase. Each comes with an
-//      LLM-confirmation pass that catches the common FP shapes, but
-//      starting OFF keeps the first-run noise floor low.
+// Every detector NOT in this set targets a hard-spot that single-file
+// linters can't reach — cross-file reachability (dead-* / hot-hub),
+// concurrency / data-flow (race-* / mutation), AST clustering
+// (duplicate-* / similar-functions), package / config contract
+// (bad-config / unused-deps / package-export-mismatch / env-var-
+// undeclared), or the new cross-file heuristics in the 1.1.0 series
+// (re-export-shadow, default-export-name-drift, schema-shape-
+// divergence, producer-consumer-field-drift, unsanitized-input-to-
+// sink). Those stay ON because that's where rothunter is uniquely
+// useful.
 //
 // Adding an id here that doesn't yet exist in DETECTOR_IDS is a no-op
 // — the merge in `readSettings()` falls back to the present-id list.
-// Detector PRs add their id to DETECTOR_IDS; the OFF set entry below
-// becomes effective once the PR lands.
 const LINT_OVERLAP_DEFAULT_OFF = new Set<string>([
-  // 1. ESLint / tsc overlap
+  // Full overlap — standard recommended-set rules.
   'public-any', // @typescript-eslint/no-explicit-any
   'long-function', // max-lines-per-function
   'long-file', // max-lines
@@ -65,16 +61,13 @@ const LINT_OVERLAP_DEFAULT_OFF = new Set<string>([
   'console-log-prod', // no-console
   'skip-tests', // jest/no-disabled-tests + jest/no-focused-tests
 
-  // 2. New cross-file / heuristic detectors — conservative ship,
-  //    flip ON per project from the Settings UI.
-  're-export-shadow',
-  'default-export-name-drift',
-  'test-without-assertion',
-  'env-var-undeclared',
-  'package-export-mismatch',
-  'schema-shape-divergence',
-  'producer-consumer-field-drift',
-  'unsanitized-input-to-sink',
+  // Partial overlap — a plugin or stricter config catches the same
+  // surface even if the default recommended set doesn't. Off by
+  // default because once a project enables the plugin / tightens the
+  // rule, the rothunter finding becomes pure duplicate noise.
+  'silent-catch', // no-empty with `allowEmptyCatch: false`
+  'todo-comments', // no-warning-comments (JS/TS files)
+  'test-without-assertion', // jest/expect-expect (jest-plugin)
 ]);
 
 function defaultSettings(): AppSettings {

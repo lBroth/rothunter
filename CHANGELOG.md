@@ -26,13 +26,27 @@ results stay in the report when the local LLM is unreachable.
 
 ### Changed
 
-- **Default detector set is now conservative.** Fifteen detectors ship
-  default-OFF: the seven that overlap with standard ESLint rules
-  (`public-any`, `long-function`, `long-file`, `deep-nesting`,
-  `magic-numbers`, `console-log-prod`, `skip-tests`) plus the eight new
-  cross-file / heuristic detectors above. Operators flip them ON
-  per-project from the Settings UI. `silent-catch`, `todo-comments` and
-  `mutable-globals` stay ON — each has a real ESLint coverage gap.
+- **Default detector set is now principle-driven.** A detector ships
+  OFF iff a standard ESLint rule (or plugin) covers the same surface
+  — running both would just duplicate the project's own lint noise.
+  Ten detectors land OFF on this principle: the seven full-overlap
+  recommended-set rules (`public-any`, `long-function`, `long-file`,
+  `deep-nesting`, `magic-numbers`, `console-log-prod`, `skip-tests`)
+  plus three with partial overlap a plugin / stricter config catches
+  (`silent-catch` ↔ `no-empty` with `allowEmptyCatch: false`,
+  `todo-comments` ↔ `no-warning-comments`, `test-without-assertion` ↔
+  `jest/expect-expect`).
+- **Everything that ships ON is hard-spot territory** lint and tsc
+  can't reach: cross-file reachability (`dead-*`, `hot-hub-file`),
+  concurrency data-flow (`race-condition`, `api-race`,
+  `shared-db-write`, `mutation`), AST / type clustering
+  (`duplicate-*`, `similar-functions`, `schema-shape-divergence`),
+  package / config contract (`bad-config`, `unused-deps`,
+  `package-export-mismatch`, `env-var-undeclared`,
+  `mutable-globals`), barrel / re-export contract
+  (`re-export-shadow`, `default-export-name-drift`), and the new
+  cross-file flow detectors (`producer-consumer-field-drift`,
+  `unsanitized-input-to-sink`).
 - **Parser:** `ImportRecord` now carries `reExportLocalNames` (alias-RHS,
   parallel to the existing `reExportNames`) so detectors that care about
   the final published name (e.g. `re-export-shadow`) see it directly.

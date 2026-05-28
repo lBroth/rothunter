@@ -8,13 +8,10 @@ const HOME = os.homedir();
 const CONFIG_DIR = path.join(HOME, '.rothunter');
 const SETTINGS_FILE = path.join(CONFIG_DIR, 'settings.json');
 
-// IDs the store ships OFF by default. Includes the 8 new cross-file /
-// heuristic detectors so they land OFF the moment their PRs rebase on
-// this commit and add their id to DETECTOR_IDS. While those PRs are
-// still in flight the entries here are no-ops — the assertions below
-// skip any id that isn't yet present in DETECTOR_IDS.
+// IDs the store ships OFF by default — every one has a standard
+// ESLint rule (or plugin) that covers the same surface.
 const LINT_OVERLAP_EXPECTED_OFF = [
-  // ESLint / tsc overlap
+  // Full overlap
   'public-any',
   'long-function',
   'long-file',
@@ -22,22 +19,23 @@ const LINT_OVERLAP_EXPECTED_OFF = [
   'magic-numbers',
   'console-log-prod',
   'skip-tests',
-  // New cross-file / heuristic detectors — conservative ship
-  're-export-shadow',
-  'default-export-name-drift',
-  'test-without-assertion',
-  'env-var-undeclared',
-  'package-export-mismatch',
-  'schema-shape-divergence',
-  'producer-consumer-field-drift',
-  'unsanitized-input-to-sink',
-] as const;
-
-const LINT_OVERLAP_EXPECTED_ON = [
-  // Stay ON because no ESLint rule covers them with the same scope.
+  // Partial overlap (plugin or stricter config)
   'silent-catch',
   'todo-comments',
-  'mutable-globals',
+  'test-without-assertion',
+] as const;
+
+// Sample of unique-value detectors that MUST stay ON because no
+// ESLint rule reaches them. Not an exhaustive list — the
+// "every-unique-detector ON" assertion below checks the complement.
+const LINT_OVERLAP_EXPECTED_ON = [
+  'mutable-globals', // no eslint rule flags top-level reassigned `let`
+  'race-condition', // concurrency data-flow
+  'duplicate-function', // cross-file AST clustering
+  'dead-export', // cross-file reachability
+  're-export-shadow', // cross-file barrel ambiguity
+  'env-var-undeclared', // source-vs-config cross-check
+  'unsanitized-input-to-sink', // intra-procedural taint flow
 ] as const;
 
 describe('settings defaults — lint-overlap detectors', () => {
