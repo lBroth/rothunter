@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>rothunter — catch the bugs lint can't see</title>
-<meta name="description" content="Self-hosted code-hygiene engine for TypeScript / JavaScript. 24 deterministic detectors + local LLM verdicts. Catches cross-service race conditions across monorepo packages." />
-<meta property="og:title" content="rothunter — catch the bugs lint can't see" />
-<meta property="og:description" content="24 detectors + local LLM verdicts + cross-service race detection across monorepo packages. Self-hosted, MIT licensed." />
+<title>rothunter — hard spots ESLint and tsc can't reach</title>
+<meta name="description" content="Self-hosted code-hygiene engine for TypeScript / JavaScript. 32 detectors — by default ON only the 22 that lint and tsc structurally can't catch: cross-file reachability, concurrency data-flow, AST clustering, package + config contract drift." />
+<meta property="og:title" content="rothunter — hard spots ESLint and tsc can't reach" />
+<meta property="og:description" content="32 detectors + local LLM verdicts. ON by default only where single-file rules can't reach: cross-file reachability, concurrency data-flow, AST clustering, contract drift, taint flow." />
 <meta property="og:type" content="website" />
 <link rel="icon" type="image/png" href="logo.png" />
 <!-- Tailwind vendored locally (CDN script frozen at 3.4.16) so the
@@ -79,7 +79,7 @@
     <a href="#" class="flex items-center gap-2.5 group">
       <img src="logo.png" alt="" class="w-7 h-7 rounded-md" />
       <span class="font-serif text-lg font-semibold">rothunter</span>
-      <span class="hidden sm:inline text-[10px] font-mono text-muted border border-border rounded px-1.5 py-0.5">v1.0.0-rc.1</span>
+      <span class="hidden sm:inline text-[10px] font-mono text-muted border border-border rounded px-1.5 py-0.5">v1.1.0-rc.1</span>
     </a>
     <nav class="ml-auto flex items-center gap-5 text-sm">
       <a href="#what" class="text-muted hover:text-ink">What it catches</a>
@@ -101,12 +101,15 @@
       <span class="text-[11px] font-mono text-accent uppercase tracking-widest">self-hosted · local LLM · MIT</span>
     </div>
     <h1 class="font-serif text-5xl md:text-7xl font-semibold leading-[1.05] tracking-tight max-w-4xl">
-      Catch the bugs <span class="italic text-accent">lint can't see.</span>
+      The hard spots <span class="italic text-accent">lint and tsc can't reach.</span>
     </h1>
     <p class="mt-6 text-lg text-muted max-w-2xl leading-relaxed">
-      24 deterministic detectors + a local LLM verdict pass. Built for the
-      bugs that span <strong class="text-ink font-normal">files, services, and repositories</strong> — the
-      ones a single-file walker structurally can't catch.
+      32 deterministic detectors — by default ON only the
+      <strong class="text-ink font-normal">22</strong> that span files, services, and repositories:
+      cross-file reachability, concurrency data-flow, AST clustering, package +
+      config contract drift, taint flow. The 10 detectors that overlap with a
+      standard ESLint rule ship OFF — flip them ON only if your project
+      doesn't run the equivalent.
     </p>
     <div class="mt-10 flex items-center gap-3 flex-wrap">
       <a href="#install" class="inline-flex items-center gap-2 bg-accent hover:bg-accent/90 text-panel font-medium px-5 py-2.5 rounded-md text-sm transition glow">
@@ -130,7 +133,7 @@
         <pre class="px-5 py-4 text-[12.5px] leading-relaxed text-ink/90"><code><span class="text-muted">$</span> npm run dev:full
 <span class="text-low">▸</span> server on :3000  · UI on :5173  · llama.cpp on :8080
 <span class="text-low">▸</span> parsed 1,842 files · 18,403 symbols
-<span class="text-low">▸</span> running 24 detectors · 0 / 24 done
+<span class="text-low">▸</span> running 22 detectors (10 OFF — lint covers) · 0 / 22 done
 <span class="text-low">▸</span> detector pipeline done · 47 raw findings
 <span class="text-accent">▸</span> LLM verdict pass (concurrency 4) · 47 / 47 done
 <span class="text-ink">▸</span> done · <span class="text-high">2 high</span>  <span class="text-med">5 med</span>  <span class="text-low">11 low</span>  (29 auto-FP'd)</code></pre>
@@ -144,9 +147,15 @@
 <section id="what" class="py-24 border-t border-border-soft">
   <div class="max-w-6xl mx-auto px-5">
     <div class="text-[11px] font-mono text-accent uppercase tracking-widest mb-3">what it catches</div>
-    <h2 class="font-serif text-4xl md:text-5xl font-semibold mb-12 max-w-3xl leading-[1.1]">
-      24 detectors built for <span class="italic text-accent">cross-file</span> defects.
+    <h2 class="font-serif text-4xl md:text-5xl font-semibold mb-6 max-w-3xl leading-[1.1]">
+      32 detectors built for <span class="italic text-accent">cross-file</span> defects.
     </h2>
+    <p class="text-base text-muted max-w-3xl mb-12 leading-relaxed">
+      Single-file rules can't see what they don't read. Below is a sample
+      from each of the six hard-spot categories rothunter ships ON by
+      default — reachability, concurrency, AST clustering, contract drift,
+      barrel ambiguity, taint flow.
+    </p>
 
     <div class="grid md:grid-cols-3 gap-4">
       <!-- Card 1 -->
@@ -176,32 +185,32 @@
         <h3 class="font-serif text-xl font-semibold mb-2">Async fan-out on a write endpoint</h3>
         <p class="text-sm text-muted leading-relaxed">≥ 2 caller files hit the same `PUT /api/x` endpoint without an `If-Match` / single-flight guard. Catches the "last write wins" silent overwrite.</p>
       </article>
-      <!-- Card 4 -->
+      <!-- Card 4 — unsanitized-input-to-sink -->
       <article class="rounded-lg border border-border bg-panel p-6 hover:border-accent/40 transition">
         <div class="flex items-center gap-2 mb-3">
-          <span class="text-[10px] font-mono text-med border border-med/40 rounded px-1.5 py-0.5 uppercase tracking-wider">med</span>
-          <span class="text-[11px] font-mono text-muted">silent-catch</span>
+          <span class="text-[10px] font-mono text-high border border-high/40 rounded px-1.5 py-0.5 uppercase tracking-wider">high</span>
+          <span class="text-[11px] font-mono text-muted">unsanitized-input-to-sink</span>
         </div>
-        <h3 class="font-serif text-xl font-semibold mb-2">Errors swallowed in silence</h3>
-        <p class="text-sm text-muted leading-relaxed">Empty `catch`, `return null` catch, or console-only catch. Skipped automatically when an intent comment (`// deliberate swallow`) explains the choice.</p>
+        <h3 class="font-serif text-xl font-semibold mb-2">Taint flow to a dangerous sink</h3>
+        <p class="text-sm text-muted leading-relaxed"><code class="text-ink font-mono text-xs">req.body.X</code> reaches raw SQL, <code class="text-ink font-mono text-xs">exec</code>, fs path, or <code class="text-ink font-mono text-xs">eval</code> without going through a parser. ESLint-plugin-security greps for sinks; this detector follows the variable that lands in them.</p>
       </article>
-      <!-- Card 5 -->
+      <!-- Card 5 — producer-consumer-field-drift -->
       <article class="rounded-lg border border-border bg-panel p-6 hover:border-accent/40 transition">
         <div class="flex items-center gap-2 mb-3">
-          <span class="text-[10px] font-mono text-med border border-med/40 rounded px-1.5 py-0.5 uppercase tracking-wider">med</span>
-          <span class="text-[11px] font-mono text-muted">duplicate-type</span>
+          <span class="text-[10px] font-mono text-high border border-high/40 rounded px-1.5 py-0.5 uppercase tracking-wider">high</span>
+          <span class="text-[11px] font-mono text-muted">producer-consumer-field-drift</span>
         </div>
-        <h3 class="font-serif text-xl font-semibold mb-2">Drifted twin definitions</h3>
-        <p class="text-sm text-muted leading-relaxed">Two interfaces with structurally equivalent shapes under different names — usually a duplicate that drifted. LLM rules out coincidental small-shape collisions.</p>
+        <h3 class="font-serif text-xl font-semibold mb-2">Server reads, no client sends</h3>
+        <p class="text-sm text-muted leading-relaxed">Handler destructures <code class="text-ink font-mono text-xs">{ email, role }</code> from <code class="text-ink font-mono text-xs">req.body</code>, but every fetch / axios callsite for that URL ships only <code class="text-ink font-mono text-xs">email</code>. Silent <code class="text-ink font-mono text-xs">undefined</code> in production.</p>
       </article>
       <!-- Card 6 -->
       <article class="rounded-lg border border-border bg-panel p-6 hover:border-accent/40 transition">
         <div class="flex items-center gap-2 mb-3">
-          <span class="text-[10px] font-mono text-low border border-low/40 rounded px-1.5 py-0.5 uppercase tracking-wider">low</span>
-          <span class="text-[11px] font-mono text-muted">dead-export</span>
+          <span class="text-[10px] font-mono text-med border border-med/40 rounded px-1.5 py-0.5 uppercase tracking-wider">med</span>
+          <span class="text-[11px] font-mono text-muted">schema-shape-divergence</span>
         </div>
-        <h3 class="font-serif text-xl font-semibold mb-2">Exports nobody imports</h3>
-        <p class="text-sm text-muted leading-relaxed">Type-surface aware — keeps exports used by sibling signatures. Published-library mode skips API surface. LLM triages the borderline cases.</p>
+        <h3 class="font-serif text-xl font-semibold mb-2">Model and DTO drifted</h3>
+        <p class="text-sm text-muted leading-relaxed">Two exported types share a name stem (<code class="text-ink font-mono text-xs">User</code> vs <code class="text-ink font-mono text-xs">UserDTO</code>) and diverge by 1-2 keys — the classic "added a column, forgot the DTO" bug. tsc never compares unrelated types.</p>
       </article>
     </div>
     <p class="mt-8 text-sm text-muted">
@@ -312,7 +321,7 @@ Shared API write: `PUT /api/inventory/:param`
       <div class="rounded-lg border border-border bg-panel p-6">
         <div class="text-2xl font-serif font-semibold text-accent mb-2">2</div>
         <h3 class="font-serif text-lg font-semibold mb-2">Deterministic pass</h3>
-        <p class="text-sm text-muted leading-relaxed">24 detectors emit findings with stable fingerprints. No flake — same code, same findings, every run.</p>
+        <p class="text-sm text-muted leading-relaxed">32 detectors emit findings with stable fingerprints (22 ON by default — the rest cover ground ESLint already does). No flake — same code, same findings, every run.</p>
       </div>
       <div class="rounded-lg border border-border bg-panel p-6">
         <div class="text-2xl font-serif font-semibold text-accent mb-2">3</div>
@@ -420,7 +429,7 @@ open http://localhost:3000</code></pre>
     <div class="flex items-center gap-2.5">
       <img src="logo.png" alt="" class="w-6 h-6 rounded" />
       <span class="font-serif text-base font-semibold">rothunter</span>
-      <span class="text-[11px] font-mono text-muted">MIT · v1.0.0-rc.1</span>
+      <span class="text-[11px] font-mono text-muted">MIT · v1.1.0-rc.1</span>
     </div>
     <nav class="ml-auto flex items-center gap-5 text-sm text-muted">
       <a href="https://github.com/lBroth/rothunter" class="hover:text-ink">GitHub</a>
