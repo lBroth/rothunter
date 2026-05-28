@@ -4,9 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>rothunter — hard spots ESLint and tsc can't reach</title>
-<meta name="description" content="Self-hosted code-hygiene engine for TypeScript / JavaScript. 32 detectors — by default ON only the 22 that lint and tsc structurally can't catch: cross-file reachability, concurrency data-flow, AST clustering, package + config contract drift." />
+<meta name="description" content="Self-hosted code-hygiene engine for TypeScript / JavaScript. 33 detectors — by default ON only the 23 that lint and tsc structurally can't catch: cross-file reachability, concurrency data-flow, AST clustering, package + config contract drift." />
 <meta property="og:title" content="rothunter — hard spots ESLint and tsc can't reach" />
-<meta property="og:description" content="32 detectors + local LLM verdicts. ON by default only where single-file rules can't reach: cross-file reachability, concurrency data-flow, AST clustering, contract drift, taint flow." />
+<meta property="og:description" content="33 detectors + local LLM verdicts. ON by default only where single-file rules can't reach: cross-file reachability, concurrency data-flow, AST clustering, contract drift, taint flow." />
 <meta property="og:type" content="website" />
 <link rel="icon" type="image/png" href="logo.png" />
 <!-- Tailwind vendored locally (CDN script frozen at 3.4.16) so the
@@ -104,8 +104,8 @@
       The hard spots <span class="italic text-accent">lint and tsc can't reach.</span>
     </h1>
     <p class="mt-6 text-lg text-muted max-w-2xl leading-relaxed">
-      32 deterministic detectors — by default ON only the
-      <strong class="text-ink font-normal">22</strong> that span files, services, and repositories:
+      33 deterministic detectors — by default ON only the
+      <strong class="text-ink font-normal">23</strong> that span files, services, and repositories:
       cross-file reachability, concurrency data-flow, AST clustering, package +
       config contract drift, taint flow. The 10 detectors that overlap with a
       standard ESLint rule ship OFF — flip them ON only if your project
@@ -133,7 +133,7 @@
         <pre class="px-5 py-4 text-[12.5px] leading-relaxed text-ink/90"><code><span class="text-muted">$</span> npm run dev:full
 <span class="text-low">▸</span> server on :3000  · UI on :5173  · llama.cpp on :8080
 <span class="text-low">▸</span> parsed 1,842 files · 18,403 symbols
-<span class="text-low">▸</span> running 22 detectors (10 OFF — lint covers) · 0 / 22 done
+<span class="text-low">▸</span> running 23 detectors (10 OFF — lint covers) · 0 / 23 done
 <span class="text-low">▸</span> detector pipeline done · 47 raw findings
 <span class="text-accent">▸</span> LLM verdict pass (concurrency 4) · 47 / 47 done
 <span class="text-ink">▸</span> done · <span class="text-high">2 high</span>  <span class="text-med">5 med</span>  <span class="text-low">11 low</span>  (29 auto-FP'd)</code></pre>
@@ -148,7 +148,7 @@
   <div class="max-w-6xl mx-auto px-5">
     <div class="text-[11px] font-mono text-accent uppercase tracking-widest mb-3">what it catches</div>
     <h2 class="font-serif text-4xl md:text-5xl font-semibold mb-6 max-w-3xl leading-[1.1]">
-      32 detectors built for <span class="italic text-accent">cross-file</span> defects.
+      33 detectors built for <span class="italic text-accent">cross-file</span> defects.
     </h2>
     <p class="text-base text-muted max-w-3xl mb-12 leading-relaxed">
       Single-file rules can't see what they don't read. Below is a sample
@@ -321,7 +321,7 @@ Shared API write: `PUT /api/inventory/:param`
       <div class="rounded-lg border border-border bg-panel p-6">
         <div class="text-2xl font-serif font-semibold text-accent mb-2">2</div>
         <h3 class="font-serif text-lg font-semibold mb-2">Deterministic pass</h3>
-        <p class="text-sm text-muted leading-relaxed">32 detectors emit findings with stable fingerprints (22 ON by default — the rest cover ground ESLint already does). No flake — same code, same findings, every run.</p>
+        <p class="text-sm text-muted leading-relaxed">33 detectors emit findings with stable fingerprints (23 ON by default — the rest cover ground ESLint already does). No flake — same code, same findings, every run.</p>
       </div>
       <div class="rounded-lg border border-border bg-panel p-6">
         <div class="text-2xl font-serif font-semibold text-accent mb-2">3</div>

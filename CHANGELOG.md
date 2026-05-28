@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0-rc.2] — 2026-05-28
+
+### Added
+
+- **`dead-endpoint` detector** (MED). HTTP route declared
+  (`app.<method>('/url', …)` / Express / Fastify) with zero
+  fetch / axios callsites anywhere in the workspace bucket. Best
+  signal in monorepo mode where every linked service is in the scan
+  — the detector spots every API endpoint whose remaining callers
+  have all been removed, so the route can be safely deleted.
+  Companion to `producer-consumer-field-drift`: that detector
+  matches server-reads against client-writes for the same URL; this
+  one fires when the match returns zero clients. Param-aware (a
+  server route `/api/users/:id` matches template-string clients
+  like `/api/users/${id}`); tolerates trailing-slash mismatches.
+  Honours `// rothunter:ignore-dead-endpoint` for routes consumed
+  by an unscanned external client. Ships ON by default.
+
 ## [1.1.0-rc.1] — 2026-05-28
 
 ### Added

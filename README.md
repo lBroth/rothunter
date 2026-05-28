@@ -11,16 +11,16 @@
 
 ## What lint and tsc miss
 
-ESLint and tsc are single-file tools. They never see across module boundaries, never trace request taint to a sink, never compare two types declared in different files. Rothunter ships **32 detectors**; by default it turns ON only the **22** that target this hard-spot territory:
+ESLint and tsc are single-file tools. They never see across module boundaries, never trace request taint to a sink, never compare two types declared in different files. Rothunter ships **33 detectors**; by default it turns ON only the **23** that target this hard-spot territory:
 
-| Category                      | Detectors that ship ON                                                                          | Why lint / tsc can't                                                                                                   |
-| ----------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Cross-file reachability**   | `dead-module`, `dead-export`, `dead-api`, `dead-handler`, `hot-hub-file`                        | Needs the workspace's import graph + entry-point set; single-file rules can't tell whether a symbol has any consumer   |
-| **Concurrency / data-flow**   | `race-condition`, `api-race`, `shared-db-write`, `mutation`                                     | Needs CFG-aware tracing across `await` boundaries and shared-resource pattern matching                                 |
-| **AST / type clustering**     | `duplicate-type`, `duplicate-function`, `similar-functions`, `schema-shape-divergence`          | Needs cross-file structural hashing + stem clustering; tsc only errors on identical names in the same scope            |
-| **Package / config contract** | `bad-config`, `unused-deps`, `package-export-mismatch`, `env-var-undeclared`, `mutable-globals` | Needs to cross the source / config boundary — `package.json`, Dockerfile, `.env.example`, dotenv schemas               |
-| **Barrel / re-export drift**  | `re-export-shadow`, `default-export-name-drift`                                                 | Needs to compare a barrel's exits against every importer's local name; alias-aware                                     |
-| **Cross-file flow**           | `producer-consumer-field-drift`, `unsanitized-input-to-sink`                                    | Needs to follow taint from a request source to a sink, or to diff server-read keys against every client's request body |
+| Category                      | Detectors that ship ON                                                                          | Why lint / tsc can't                                                                                                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cross-file reachability**   | `dead-module`, `dead-export`, `dead-api`, `dead-handler`, `hot-hub-file`                        | Needs the workspace's import graph + entry-point set; single-file rules can't tell whether a symbol has any consumer                                                  |
+| **Concurrency / data-flow**   | `race-condition`, `api-race`, `shared-db-write`, `mutation`                                     | Needs CFG-aware tracing across `await` boundaries and shared-resource pattern matching                                                                                |
+| **AST / type clustering**     | `duplicate-type`, `duplicate-function`, `similar-functions`, `schema-shape-divergence`          | Needs cross-file structural hashing + stem clustering; tsc only errors on identical names in the same scope                                                           |
+| **Package / config contract** | `bad-config`, `unused-deps`, `package-export-mismatch`, `env-var-undeclared`, `mutable-globals` | Needs to cross the source / config boundary — `package.json`, Dockerfile, `.env.example`, dotenv schemas                                                              |
+| **Barrel / re-export drift**  | `re-export-shadow`, `default-export-name-drift`                                                 | Needs to compare a barrel's exits against every importer's local name; alias-aware                                                                                    |
+| **Cross-file flow**           | `producer-consumer-field-drift`, `unsanitized-input-to-sink`, `dead-endpoint`                   | Needs to follow taint from a request source to a sink, diff server-read keys against every client's request body, or spot a route whose callers have all been removed |
 
 The remaining **10 detectors** ship OFF by default because they overlap with a standard ESLint rule (or plugin). One-click ON from the Settings UI if your project doesn't enable the equivalent.
 
@@ -54,7 +54,7 @@ rothunter has TWO independent pieces:
 
 | Piece                                    | What it does                                                                                                        | Where it runs                                     |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| **Engine + dashboard** (`rothunter`)     | parses your repo, runs 32 detectors, serves the Fastify API + React UI on `:3000`                                   | this is what the npm package / docker image ships |
+| **Engine + dashboard** (`rothunter`)     | parses your repo, runs 33 detectors, serves the Fastify API + React UI on `:3000`                                   | this is what the npm package / docker image ships |
 | **LLM** (any OpenAI-compatible endpoint) | answers the verdict prompts ("is this finding real or intentional?") — typically `llama.cpp` with Qwen2.5-Coder-14B | runs separately, you point rothunter at it        |
 
 The engine runs WITHOUT the LLM — the deterministic detectors still
