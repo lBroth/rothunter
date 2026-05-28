@@ -6,20 +6,36 @@
 
 <p align="center">
   Self-hosted code-hygiene engine for TypeScript / JavaScript codebases.<br/>
-  Deterministic detectors + local LLM verdicts + dashboard.
+  <strong>Catches the hard spots ESLint and tsc can't reach</strong> — cross-file reachability, concurrency data-flow, AST clustering, package + config contract drift. Deterministic detectors + local LLM verdicts + dashboard.
 </p>
 
-## What it catches
+## What lint and tsc miss
 
-24 detectors out of the box:
+ESLint and tsc are single-file tools. They never see across module boundaries, never trace request taint to a sink, never compare two types declared in different files. Rothunter ships **32 detectors**; by default it turns ON only the **22** that target this hard-spot territory:
 
-- Duplicate types / functions, dead modules / exports / handlers / api
-- Race-condition / mutation / shared-db-write / api-race
-- TSConfig / ESLint / Biome anti-patterns
-- Silent catch, skip-tests (`.skip` / `.only`), TODO / FIXME / HACK comments
-- Long files / functions, deep nesting
-- Public `any`, mutable globals, unused deps, hot-hub files
-- Similar functions (fuzzy clusters with canonical-pick + npm-package suggestion)
+| Category                      | Detectors that ship ON                                                                          | Why lint / tsc can't                                                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Cross-file reachability**   | `dead-module`, `dead-export`, `dead-api`, `dead-handler`, `hot-hub-file`                        | Needs the workspace's import graph + entry-point set; single-file rules can't tell whether a symbol has any consumer   |
+| **Concurrency / data-flow**   | `race-condition`, `api-race`, `shared-db-write`, `mutation`                                     | Needs CFG-aware tracing across `await` boundaries and shared-resource pattern matching                                 |
+| **AST / type clustering**     | `duplicate-type`, `duplicate-function`, `similar-functions`, `schema-shape-divergence`          | Needs cross-file structural hashing + stem clustering; tsc only errors on identical names in the same scope            |
+| **Package / config contract** | `bad-config`, `unused-deps`, `package-export-mismatch`, `env-var-undeclared`, `mutable-globals` | Needs to cross the source / config boundary — `package.json`, Dockerfile, `.env.example`, dotenv schemas               |
+| **Barrel / re-export drift**  | `re-export-shadow`, `default-export-name-drift`                                                 | Needs to compare a barrel's exits against every importer's local name; alias-aware                                     |
+| **Cross-file flow**           | `producer-consumer-field-drift`, `unsanitized-input-to-sink`                                    | Needs to follow taint from a request source to a sink, or to diff server-read keys against every client's request body |
+
+The remaining **10 detectors** ship OFF by default because they overlap with a standard ESLint rule (or plugin). One-click ON from the Settings UI if your project doesn't enable the equivalent.
+
+| Default-OFF detector     | Standard ESLint equivalent                         |
+| ------------------------ | -------------------------------------------------- |
+| `public-any`             | `@typescript-eslint/no-explicit-any`               |
+| `long-function`          | `max-lines-per-function`                           |
+| `long-file`              | `max-lines`                                        |
+| `deep-nesting`           | `max-depth` / `complexity`                         |
+| `magic-numbers`          | `no-magic-numbers`                                 |
+| `console-log-prod`       | `no-console`                                       |
+| `skip-tests`             | `jest/no-disabled-tests` + `jest/no-focused-tests` |
+| `silent-catch`           | `no-empty` (`allowEmptyCatch: false`)              |
+| `todo-comments`          | `no-warning-comments`                              |
+| `test-without-assertion` | `jest/expect-expect`                               |
 
 **Cross-service race detection** — `shared-db-write` and `api-race` run cross-workspace in monorepo mode, catching DB-column writes and write-endpoint calls that span service / repository boundaries. See [`docs/RACE-DETECTION.md`](./docs/RACE-DETECTION.md) for a walkthrough with three concrete scenarios.
 
@@ -27,10 +43,10 @@ Full detector list with severities + tunables: [`docs/DETECTORS.md`](./docs/DETE
 
 ### Coverage by mode
 
-| Mode                                                     | Detectors                                                                                                                                                                                                                             |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Single-workspace                                         | All 24                                                                                                                                                                                                                                |
-| Multi-workspace (cross-repo via `rothunter.config.json`) | 9 cross-repo always-on (duplicate-type, duplicate-function, dead-module, dead-export, dead-api, long-function, deep-nesting, public-any, hot-hub-file) + the remaining 15 looped per workspace with workspace-namespaced fingerprints |
+| Mode                                                     | Detectors                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Single-workspace                                         | All 32                                                                                                                                                                                                                                                                                                         |
+| Multi-workspace (cross-repo via `rothunter.config.json`) | Cross-repo always-on: every symbol/graph-only detector — `duplicate-*`, `dead-module`, `dead-export`, `dead-api`, `long-function`, `deep-nesting`, `public-any`, `hot-hub-file`, `re-export-shadow`, `default-export-name-drift`, `schema-shape-divergence` — plus file-walking detectors looped per workspace |
 
 ## What you actually get
 
@@ -38,7 +54,7 @@ rothunter has TWO independent pieces:
 
 | Piece                                    | What it does                                                                                                        | Where it runs                                     |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| **Engine + dashboard** (`rothunter`)     | parses your repo, runs 24 detectors, serves the Fastify API + React UI on `:3000`                                   | this is what the npm package / docker image ships |
+| **Engine + dashboard** (`rothunter`)     | parses your repo, runs 32 detectors, serves the Fastify API + React UI on `:3000`                                   | this is what the npm package / docker image ships |
 | **LLM** (any OpenAI-compatible endpoint) | answers the verdict prompts ("is this finding real or intentional?") — typically `llama.cpp` with Qwen2.5-Coder-14B | runs separately, you point rothunter at it        |
 
 The engine runs WITHOUT the LLM — the deterministic detectors still
@@ -99,7 +115,7 @@ Then point rothunter at it via `ROTHUNTER_LLM_BASE_URL`
 
 ```
 src/
-  detectors/    — 24 deterministic detectors
+  detectors/    — 32 deterministic detectors
   extraction/   — LLM confirmers
   parsers/      — ts-morph symbol + import graph
   graph/        — import-graph + entry-point resolution
