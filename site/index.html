@@ -388,17 +388,18 @@ npm run setup
 npm run dev:full</code></pre>
       </div>
 
-      <!-- docker compose -->
+      <!-- docker compose — no clone -->
       <div class="rounded-lg border border-border bg-panel overflow-hidden">
         <header class="px-4 py-3 border-b border-border-soft flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-low"></span>
-          <span class="font-mono text-[11px] text-ink">docker-compose (with LLM sidecar)</span>
+          <span class="font-mono text-[11px] text-ink">docker compose + LLM sidecar (no clone)</span>
         </header>
-        <pre class="p-5 text-[12px] leading-relaxed text-ink/90"><code><span class="text-muted"># compose ships LLM sidecar (~9 GB model)</span>
-git clone https://github.com/lBroth/rothunter
-cd rothunter
-ROTHUNTER_WORKSPACE_HOST=/path/to/repo \
-  npm run docker
+        <pre class="p-5 text-[12px] leading-relaxed text-ink/90"><code><span class="text-muted"># pulls images, ~9 GB model on first boot</span>
+curl -fsSL https://raw.githubusercontent.com\
+/lBroth/rothunter/main/src/docker/\
+docker-compose.standalone.yml \
+  | ROTHUNTER_WORKSPACE_HOST=$(pwd) \
+    docker compose -f - up
 
 open http://localhost:3000</code></pre>
       </div>
