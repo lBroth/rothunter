@@ -49,6 +49,7 @@ export const DETECTOR_IDS = [
   'package-export-mismatch',
   'producer-consumer-field-drift',
   'unsanitized-input-to-sink',
+  'dead-endpoint',
 ] as const;
 
 export type DetectorId = (typeof DETECTOR_IDS)[number];
@@ -80,6 +81,7 @@ export const MULTI_WORKSPACE_SKIPPED = new Set<DetectorId>([
   'package-export-mismatch',
   'producer-consumer-field-drift',
   'unsanitized-input-to-sink',
+  'dead-endpoint',
 ]);
 
 /**

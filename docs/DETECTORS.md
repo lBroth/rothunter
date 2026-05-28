@@ -1,6 +1,6 @@
 # Detector reference
 
-32 detectors out of the box. **22 ship ON by default** — every one
+33 detectors out of the box. **23 ship ON by default** — every one
 targets cross-file / data-flow / contract drift that single-file
 linters can't reach. **10 ship OFF by default** — each one duplicates
 a standard ESLint rule (or plugin); flip them ON from the Settings UI
@@ -64,6 +64,7 @@ the detectors that read them; the rest run on fixed heuristics.
 | ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | `producer-consumer-field-drift` | high     | Express / Fastify route reads `req.body.X` / `req.query.X` / `req.params.X` for a key no fetch / axios callsite in the workspace ever sends to that URL. URL match on string literal (template-string prefix tolerated); endpoints keyed by METHOD. | —        |
 | `unsanitized-input-to-sink`     | high     | Taint flow from request-shaped sources (`req.*`, `searchParams.get`, `formData.get`) to dangerous sinks: raw SQL, `child_process.exec` / `spawn`, fs path concatenation, `eval` / `new Function`, dynamic `import()`, tagged SQL templates.         | —        |
+| `dead-endpoint`                 | medium   | HTTP route declared on the server side (`app.<method>('/url', …)`) that no fetch / axios callsite anywhere in the workspace bucket hits. Param-aware (`/api/users/:id` matches template-string clients); tolerates trailing-slash mismatches.       | —        |
 
 ## Default OFF — covered by a standard ESLint rule
 
