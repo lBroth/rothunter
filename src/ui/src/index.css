@@ -1,13 +1,9 @@
-@import '/fonts/fonts.css';
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
 /*
  * Theme tokens — warm paper light, warm dark. CSS vars switch on `.dark`
- * applied to <html>. RGB triplets so Tailwind's `bg-bg/40` alpha shorthand
- * works.
+ * applied to <html>. Space-separated RGB triplets so Tailwind's slash-
+ * modifier alpha (`bg-bg/40`) keeps working after `@theme` aliases them.
  */
 :root {
   --rh-bg: 245 242 235; /* #f5f2eb */
@@ -32,6 +28,62 @@
   --rh-accent: 236 110 138; /* #ec6e8a (kept) */
   --rh-accent-soft: 120 60 78; /* deeper soft */
 }
+
+/*
+ * Project-wide design tokens — same shape as the old tailwind.config.js
+ * `theme.extend.colors` block. `@theme` makes the keys land as utilities
+ * (`bg-bg`, `text-ink`, …) AND as native CSS custom properties.
+ *
+ * Colors use the `rgb(var(--rh-…))` form so the slash-alpha modifier
+ * works (`bg-bg/40` resolves to `rgb(var(--rh-bg) / 0.4)` per Tailwind
+ * v4's `color-mix`-based opacity pipeline).
+ */
+@theme {
+  --color-bg: rgb(var(--rh-bg));
+  --color-panel: rgb(var(--rh-panel));
+  --color-panel-alt: rgb(var(--rh-panel-alt));
+  --color-border: rgb(var(--rh-border));
+  --color-border-soft: rgb(var(--rh-border-soft));
+  --color-ink: rgb(var(--rh-ink));
+  --color-muted: rgb(var(--rh-muted));
+  --color-accent: rgb(var(--rh-accent));
+  --color-accent-soft: rgb(var(--rh-accent-soft));
+
+  /* Severity tones — shared across light + dark. */
+  --color-high: #fb7185;
+  --color-high-soft: #fda4af;
+  --color-high-wash: #fecdd3;
+  --color-med: #fbbf24;
+  --color-med-soft: #fde68a;
+  --color-med-wash: #fef3c7;
+  --color-low: #34d399;
+  --color-low-soft: #86efac;
+  --color-low-wash: #d1fae5;
+  --color-info: #38bdf8;
+  --color-info-soft: #bae6fd;
+  --color-info-wash: #e0f2fe;
+
+  /* Back-compat aliases used by the v1 components — phased out as
+     pages are rewritten to the new token names. */
+  --color-ce: rgb(var(--rh-ink));
+  --color-purple: #a371f7;
+
+  --font-serif: 'Newsreader', 'Iowan Old Style', 'Tiempos Headline', serif;
+  --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
+  --tracking-wider: 0.06em;
+  --tracking-widest: 0.12em;
+
+  --radius-lg: 10px;
+}
+
+/*
+ * Tailwind v4 doesn't ship the `darkMode: 'class'` v3 config knob. The
+ * variant is declared here so utilities like `dark:bg-panel` keep firing
+ * when `<html class="dark">` is set.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   html,
