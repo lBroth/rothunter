@@ -354,12 +354,30 @@ Shared API write: `PUT /api/inventory/:param`
       Self-hosted in <span class="italic text-accent">60 seconds.</span>
     </h2>
 
-    <div class="grid md:grid-cols-2 gap-6">
-      <!-- docker compose — fastest, LLM included, no clone -->
+    <div class="grid md:grid-cols-3 gap-6">
+      <!-- npx — fastest, zero install -->
       <div class="rounded-lg border border-accent/50 bg-panel overflow-hidden glow">
         <header class="px-4 py-3 border-b border-border-soft flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-accent"></span>
-          <span class="font-mono text-[11px] text-ink">docker compose (fastest — LLM included, no clone)</span>
+          <span class="font-mono text-[11px] text-ink">npx (fastest — zero install)</span>
+        </header>
+        <pre class="p-5 text-[12px] leading-relaxed text-ink/90"><code><span class="text-muted"># cd into the repo you want to scan</span>
+npx @lbroth/rothunter@next
+
+<span class="text-muted"># open the dashboard</span>
+open http://localhost:3000
+
+<span class="text-muted"># needs an OpenAI-compatible LLM (Ollama,</span>
+<span class="text-muted"># llama.cpp, or a container exposing one).</span>
+<span class="text-muted"># without it the deterministic detectors</span>
+<span class="text-muted"># still run — you just lose the LLM verdict.</span></code></pre>
+      </div>
+
+      <!-- docker compose — LLM included, no clone -->
+      <div class="rounded-lg border border-border bg-panel overflow-hidden">
+        <header class="px-4 py-3 border-b border-border-soft flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-low"></span>
+          <span class="font-mono text-[11px] text-ink">docker compose (LLM included, no clone)</span>
         </header>
         <pre class="p-5 text-[12px] leading-relaxed text-ink/90"><code><span class="text-muted"># pulls images, ~9 GB model on first boot</span>
 curl -fsSL https://raw.githubusercontent.com\
